@@ -18,6 +18,12 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
+      - name: Cache HuggingFace hub models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-hub-${{ runner.os }}-distilbert-base-uncased
+
       - name: Install dependencies
         run: uv sync
 
