@@ -1,0 +1,54 @@
+{
+  "dataset": "kaggle_nlp_getting_started",
+  "raw_csv_path": "data/kaggle/raw/train.csv",
+  "raw_sha256": "61111c6dc31eaffa34d1e1fa62e2395325c9bc3b38bba1941a5f1ed9b3fa60df",
+  "raw_row_count": 7613,
+  "exact_duplicate_row_count": 110,
+  "dropped_conflicting_row_count": 55,
+  "dropped_conflicting_group_count": 18,
+  "deduped_row_count": 7485,
+  "seed": 42,
+  "split_ratios": {
+    "train": 0.8,
+    "val": 0.1,
+    "test": 0.1
+  },
+  "splits": {
+    "train": {
+      "row_count": 5988,
+      "sha256": "251932ec2cdca34b6e9b990bae04578b8261a16164241cf6f9f43a8fe46b494b",
+      "class_balance": {
+        "counts": {
+          "0": 3438,
+          "1": 2550
+        },
+        "positive_rate": 0.4258517034068136,
+        "total": 5988
+      }
+    },
+    "val": {
+      "row_count": 748,
+      "sha256": "506f8bfea297dc29c6e0860de69517c520c48c162a5b7b04fb46954f2893cf54",
+      "class_balance": {
+        "counts": {
+          "0": 429,
+          "1": 319
+        },
+        "positive_rate": 0.4264705882352941,
+        "total": 748
+      }
+    },
+    "test": {
+      "row_count": 749,
+      "sha256": "f1dabc17925b32a04601ecd5f8c4a2069f23ee03c8c5699badef7f4807c9ccad",
+      "class_balance": {
+        "counts": {
+          "0": 430,
+          "1": 319
+        },
+        "positive_rate": 0.4259012016021362,
+        "total": 749
+      }
+    }
+  }
+}

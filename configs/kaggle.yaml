@@ -1,0 +1,11 @@
+dataset: kaggle_nlp_getting_started
+raw_csv_path: data/kaggle/raw/train.csv
+output_dir: data/kaggle
+seed: 42
+text_col: text
+label_col: target
+id_col: id
+split:
+  train: 0.8
+  val: 0.1
+  test: 0.1
