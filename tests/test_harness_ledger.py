@@ -158,6 +158,43 @@ def test_build_run_record_honors_explicit_protocol_phase_smoke_and_config_id(tmp
     assert record["config_id"] == "deadbeef"
 
 
+def test_build_run_record_without_manifest_uses_explicit_split_hashes():
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    record = build_run_record(
+        run_id="protocol-a-run-1",
+        repo_root=repo_root,
+        model_name="lstm",
+        dataset="kaggle",
+        split="protocol_a_eval",
+        seed=42,
+        config={"lr": 0.001},
+        metrics={"accuracy": 0.7},
+        dataset_split_hashes={"protocol_a_train": "aaa", "protocol_a_eval": "bbb"},
+    )
+    assert record["dataset_manifest_path"] is None
+    assert record["dataset_split_hashes"] == {"protocol_a_train": "aaa", "protocol_a_eval": "bbb"}
+
+
+def test_build_run_record_with_neither_manifest_nor_hashes_leaves_hashes_none():
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    record = build_run_record(
+        run_id="no-manifest-run",
+        repo_root=repo_root,
+        model_name="lstm",
+        dataset="kaggle",
+        split="val",
+        seed=0,
+        config={},
+        metrics={"accuracy": 0.5},
+    )
+    assert record["dataset_manifest_path"] is None
+    assert record["dataset_split_hashes"] is None
+
+
 def test_compute_config_id_is_deterministic_and_key_order_independent():
     c1 = {"a": 1, "b": 2}
     c2 = {"b": 2, "a": 1}

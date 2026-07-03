@@ -47,7 +47,8 @@ def build_run_record(
     seed: int,
     config: dict,
     metrics: dict,
-    dataset_manifest_path: str | Path,
+    dataset_manifest_path: str | Path | None = None,
+    dataset_split_hashes: dict | None = None,
     protocol: str | None = None,
     phase: str = "phase0",
     stage: str | None = None,
@@ -55,11 +56,23 @@ def build_run_record(
     train_fraction: float = 1.0,
     config_id: str | None = None,
 ) -> dict:
-    manifest = _load_dataset_manifest(dataset_manifest_path)
-    try:
-        manifest_path_str = Path(dataset_manifest_path).resolve().relative_to(Path(repo_root).resolve()).as_posix()
-    except ValueError:
-        manifest_path_str = str(dataset_manifest_path)
+    """`dataset_manifest_path`/`dataset_split_hashes`: for datasets with a
+    prepared manifest (Protocol B's train/val/test), pass
+    `dataset_manifest_path` and split hashes are read from it. Protocol A
+    has no such manifest (it runs on a different, un-deduped split of the
+    raw csv) -- pass `dataset_split_hashes` directly (real computed hashes
+    of Protocol A's own split) instead of pointing at Protocol B's manifest,
+    which would misrepresent what data the run actually used. If neither is
+    given, `dataset_split_hashes` is None (not silently backfilled).
+    """
+    manifest_path_str = None
+    if dataset_manifest_path is not None:
+        try:
+            manifest_path_str = Path(dataset_manifest_path).resolve().relative_to(Path(repo_root).resolve()).as_posix()
+        except ValueError:
+            manifest_path_str = str(dataset_manifest_path)
+        if dataset_split_hashes is None:
+            dataset_split_hashes = _split_hashes(_load_dataset_manifest(dataset_manifest_path))
     return {
         "run_id": run_id,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
@@ -78,7 +91,7 @@ def build_run_record(
         "smoke": smoke,
         "train_fraction": train_fraction,
         "dataset_manifest_path": manifest_path_str,
-        "dataset_split_hashes": _split_hashes(manifest),
+        "dataset_split_hashes": dataset_split_hashes,
         "metrics": metrics,
     }
 
@@ -120,12 +133,13 @@ def log_evaluation_run(
     split: str,
     seed: int,
     config: dict,
-    dataset_manifest_path: str | Path,
     ids,
     texts,
     y_true,
     y_pred,
     y_prob=None,
+    dataset_manifest_path: str | Path | None = None,
+    dataset_split_hashes: dict | None = None,
     protocol: str | None = None,
     phase: str = "phase0",
     stage: str | None = None,
@@ -158,6 +172,7 @@ def log_evaluation_run(
         config=config,
         metrics=metrics,
         dataset_manifest_path=dataset_manifest_path,
+        dataset_split_hashes=dataset_split_hashes,
         protocol=protocol,
         phase=phase,
         stage=stage,
