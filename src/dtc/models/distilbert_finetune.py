@@ -74,6 +74,7 @@ class DistilBertFinetuneModel(BaseModel):
             step,
             max_epochs=config.get("max_epochs", 30),
             patience=config.get("patience", 3),
+            restore_best_weights=config.get("restore_best_weights", True),
         )
         return self
 

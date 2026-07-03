@@ -64,3 +64,8 @@ def test_mean_token_length_hand_computed():
     # whitespace-token counts: 1, 2, 4 -> mean 2.333..., ceil -> 3
     texts = ["a", "a a", "a a a a"]
     assert protocol_a.mean_token_length(texts) == 3
+
+
+def test_mean_token_length_supports_custom_token_len_fn():
+    texts = ["a", "aa", "aaa"]  # char counts: 1, 2, 3 -> mean 2.0
+    assert protocol_a.mean_token_length(texts, token_len_fn=len) == 2

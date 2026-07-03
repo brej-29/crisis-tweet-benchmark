@@ -49,7 +49,13 @@ def embed_and_cache(texts, cache_dir: Path, encoder) -> int:
     return len(to_compute)
 
 
-def main(dataset: str, splits: tuple[str, ...] = SPLITS) -> dict:
+def main(dataset: str, splits: tuple[str, ...] = SPLITS, extra_csv_paths: tuple[Path, ...] = ()) -> dict:
+    """`extra_csv_paths` lets a caller also embed text from CSVs outside the
+    prepared train/val/test splits -- e.g. Protocol A's raw (non-deduped)
+    Kaggle csv, so its use_frozen runs (E2) don't hit cache misses for the
+    handful of rows Protocol B's dedup policy dropped. Keyed by SHA256 like
+    everything else, so this is purely additive to the shared cache.
+    """
     import tensorflow_hub as hub  # deferred: keeps TF out of any non-TF import path
 
     cache_dir = REPO_ROOT / "data" / dataset / "use_embeddings"
@@ -61,6 +67,11 @@ def main(dataset: str, splits: tuple[str, ...] = SPLITS) -> dict:
         texts = load_split_texts(dataset, split)
         all_texts.extend(texts.tolist())
         new_counts[split] = embed_and_cache(texts, cache_dir, encoder)
+
+    for extra_path in extra_csv_paths:
+        texts = pd.read_csv(extra_path)["text"]
+        all_texts.extend(texts.tolist())
+        new_counts[str(extra_path)] = embed_and_cache(texts, cache_dir, encoder)
 
     manifest_path = write_manifest(
         cache_dir,
@@ -79,6 +90,13 @@ def main(dataset: str, splits: tuple[str, ...] = SPLITS) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", choices=["kaggle", "crisislex"], required=True)
+    parser.add_argument(
+        "--extra-csv",
+        nargs="*",
+        type=Path,
+        default=(),
+        help="Additional CSV(s) with a 'text' column to also embed (e.g. Protocol A's raw csv).",
+    )
     args = parser.parse_args()
-    result = main(args.dataset)
+    result = main(args.dataset, extra_csv_paths=tuple(args.extra_csv))
     print(result)

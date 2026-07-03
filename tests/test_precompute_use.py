@@ -50,3 +50,21 @@ def test_precompute_use_embeds_20_texts_and_hits_cache_on_rerun(tmp_path, monkey
 
     result_second = module.main("smoke_dataset", splits=("train", "val", "test"))
     assert result_second["new_embeddings_by_split"]["train"] == 0  # cache hit, nothing recomputed
+
+
+@pytest.mark.slow
+def test_precompute_use_embeds_extra_csv_paths(tmp_path, monkeypatch):
+    module = _load_precompute_use_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+
+    dataset_dir = tmp_path / "data" / "smoke_dataset2"
+    dataset_dir.mkdir(parents=True)
+    for split in ("train", "val", "test"):
+        pd.DataFrame({"text": []}).to_csv(dataset_dir / f"{split}.csv", index=False)
+
+    extra_csv = tmp_path / "extra_raw.csv"
+    pd.DataFrame({"text": ["extra text one", "extra text two"]}).to_csv(extra_csv, index=False)
+
+    result = module.main("smoke_dataset2", splits=("train", "val", "test"), extra_csv_paths=(extra_csv,))
+    assert result["new_embeddings_by_split"][str(extra_csv)] == 2
+    assert result["total_unique_texts"] == 2

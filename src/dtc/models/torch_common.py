@@ -58,16 +58,24 @@ def fit_with_early_stopping_generic(
     val_step_fn: StepFn,
     *,
     max_epochs: int = 30,
-    patience: int = 3,
+    patience: int | None = 3,
+    restore_best_weights: bool = True,
 ) -> tuple[torch.nn.Module, EarlyStoppingHistory]:
-    """Early-stopping training loop, generic over how a batch maps to a loss.
+    """Training loop, generic over how a batch maps to a loss.
 
     `train_step_fn(module, batch) -> loss` and `val_step_fn(module, batch) ->
     loss` let callers with different batch shapes/forward signatures (plain
     (X, y) tuples vs. HF's (input_ids, attention_mask, labels)) share one
-    stopping/best-weights-restoration implementation. Restores the
-    best-val-loss weights before returning; `max_epochs` must be high enough
-    that stopping actually binds (Hard Rule/PLAN 1.2).
+    implementation. `max_epochs` must be high enough that stopping actually
+    binds when `patience` is set (Hard Rule/PLAN 1.2).
+
+    `patience=None` disables early stopping entirely (always runs
+    `max_epochs` epochs) and `restore_best_weights=False` keeps the final
+    epoch's weights instead of the best-val-loss checkpoint -- together
+    these reproduce Protocol A's "no early stopping, fixed N epochs"
+    replication of the original (flawed) training procedure (docs/PLAN.md
+    1.3), as opposed to Protocol B's default (patience=3,
+    restore_best_weights=True).
     """
     history = EarlyStoppingHistory()
     best_val_loss = float("inf")
@@ -102,13 +110,14 @@ def fit_with_early_stopping_generic(
             epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1
-            if epochs_without_improvement >= patience:
+            if patience is not None and epochs_without_improvement >= patience:
                 history.stopped_epoch = epoch
                 break
     else:
         history.stopped_epoch = max_epochs - 1
 
-    module.load_state_dict(best_state)
+    if restore_best_weights:
+        module.load_state_dict(best_state)
     return module, history
 
 
@@ -121,7 +130,8 @@ def fit_with_early_stopping(
     device: torch.device,
     *,
     max_epochs: int = 30,
-    patience: int = 3,
+    patience: int | None = 3,
+    restore_best_weights: bool = True,
 ) -> tuple[torch.nn.Module, EarlyStoppingHistory]:
     """Convenience wrapper for the common case: batches are (X, y) tuples and
     `module(X)` returns a 1-D logit tensor matching `y`'s shape.
@@ -134,5 +144,13 @@ def fit_with_early_stopping(
         return criterion(m(X), y)
 
     return fit_with_early_stopping_generic(
-        module, train_loader, val_loader, optimizer, step, step, max_epochs=max_epochs, patience=patience
+        module,
+        train_loader,
+        val_loader,
+        optimizer,
+        step,
+        step,
+        max_epochs=max_epochs,
+        patience=patience,
+        restore_best_weights=restore_best_weights,
     )

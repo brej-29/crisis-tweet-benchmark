@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -41,9 +41,14 @@ def protocol_a_split(
     return train_df.reset_index(drop=True), eval_df.reset_index(drop=True)
 
 
-def mean_token_length(texts: Sequence[str]) -> int:
+def mean_token_length(texts: Sequence[str], token_len_fn: Callable[[str], int] | None = None) -> int:
     """Truncate-at-MEAN policy: the original audited project's approach,
     replicated here on purpose so Protocol A vs. B isolates this exact
-    confound (docs/PLAN.md 1.1/1.3)."""
-    counts = [whitespace_token_count(t) for t in texts]
+    confound (docs/PLAN.md 1.1/1.3). `token_len_fn` defaults to whitespace
+    tokens; pass a WordPiece counter for DistilBERT under Protocol A, same
+    pattern as dtc.data.text.compute_percentile_max_length.
+    """
+    if token_len_fn is None:
+        token_len_fn = whitespace_token_count
+    counts = [token_len_fn(t) for t in texts]
     return max(1, int(math.ceil(sum(counts) / len(counts))))

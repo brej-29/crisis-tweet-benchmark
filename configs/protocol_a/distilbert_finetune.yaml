@@ -1,0 +1,11 @@
+# Protocol A (docs/PLAN.md 1.3): NO original equivalent exists --
+# PROJECT_AUDIT.md's audited notebook trains no transformer model at all.
+# Using standard DistilBERT fine-tuning defaults, fixed epochs=5, no early
+# stopping, to match Protocol A's "no tuning, fixed epoch budget" spirit
+# for the models this project adds beyond the original's scope.
+dropout: 0.1
+lr: 0.00005
+batch_size: 16
+max_epochs: 5
+patience: null
+restore_best_weights: false

@@ -1,0 +1,8 @@
+# Protocol A (docs/PLAN.md 1.3): NO original equivalent exists.
+# PROJECT_AUDIT.md (sibling repo, section B) confirms the audited notebook's
+# own markdown cell claims "Logistic Regression" but the *executed* code
+# only trains MultinomialNB -- LogisticRegression was never actually run
+# there. Using plain sklearn defaults here since there is nothing to mirror.
+C: 1.0
+max_iter: 1000
+max_features: null

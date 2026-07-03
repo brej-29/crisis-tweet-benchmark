@@ -1,0 +1,64 @@
+# Declarative experiment matrix for scripts/run_matrix.py (docs/PLAN.md
+# 1.3/1.4, Phase 1 Task 5/6). Each top-level key is one experiment; the
+# driver expands each into a flat list of (stage, protocol, model, seed,
+# train_fraction) run specs and skips anything already ledgered as a
+# non-smoke run with the same (stage, protocol, model_name, config_id,
+# seed, train_fraction) tuple.
+
+e1:
+  # Protocol B finals: 9 models x final (tuned) config x 5 seeds, evaluated
+  # ONCE per run on the frozen Kaggle test split.
+  stage: E1
+  protocol: B
+  dataset: kaggle
+  models:
+    - tfidf_mnb
+    - tfidf_logreg
+    - meanpool_embed
+    - lstm
+    - gru
+    - bilstm
+    - conv1d
+    - use_frozen
+    - distilbert_finetune
+  config_source: final # configs/final/<model>.yaml, produced by scripts/select_configs.py
+  seeds: [0, 1, 2, 3, 4]
+  train_fraction: 1.0
+
+e2:
+  # Protocol A replication: raw csv, 90/10 non-stratified split, no dedup,
+  # mean-token truncation, fixed 5 epochs, no early stopping, single seed.
+  stage: E2
+  protocol: A
+  dataset: kaggle
+  models:
+    - tfidf_mnb
+    - tfidf_logreg
+    - meanpool_embed
+    - lstm
+    - gru
+    - bilstm
+    - conv1d
+    - use_frozen
+    - distilbert_finetune
+  config_source: protocol_a # configs/protocol_a/<model>.yaml
+  seeds: [42]
+  train_fraction: 1.0
+  headline_metric: weighted_f1_legacy
+
+e3:
+  # Data efficiency: stratified, nested train fractions x 5 representative
+  # models x 3 seeds, Protocol B (val for stopping, frozen test for
+  # reporting).
+  stage: E3
+  protocol: B
+  dataset: kaggle
+  models:
+    - tfidf_logreg
+    - bilstm
+    - conv1d
+    - use_frozen
+    - distilbert_finetune
+  config_source: final
+  seeds: [0, 1, 2]
+  train_fractions: [0.01, 0.05, 0.10, 0.25, 0.50, 1.0]

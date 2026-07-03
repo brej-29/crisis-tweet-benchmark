@@ -67,6 +67,17 @@ def test_vocab_sequence_model_vocab_is_train_only(tiny_train_val):
     assert probs.shape == (len(val_df),)
 
 
+def test_meanpool_embed_respects_no_early_stopping_config(tiny_train_val):
+    """Protocol A wires patience=None + restore_best_weights=False through
+    model config to reproduce "no early stopping, fixed N epochs"."""
+    train_df, val_df = tiny_train_val
+    model = build_model("meanpool_embed")
+    config = {"max_epochs": 4, "patience": None, "restore_best_weights": False, "embed_dim": 8}
+    model.fit(train_df, val_df, config=config, seed=0)
+    assert len(model.history.train_loss) == 4
+    assert model.history.stopped_epoch == 3
+
+
 def test_use_frozen_fit_and_predict_with_synthetic_cache(tmp_path, tiny_train_val):
     from dtc.data.use_cache import save_embedding
 
