@@ -1,0 +1,23 @@
+# --- Python / tooling ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+
+# --- Data: raw & split data files are not committed; only small metadata/logs are ---
+data/*
+!data/kaggle/
+!data/crisislex/
+data/kaggle/*
+!data/kaggle/manifest.json
+!data/kaggle/dropped_conflicting.csv
+data/crisislex/*
+!data/crisislex/manifest.json
+!data/crisislex/dropped_conflicting.csv
+
+# --- Results: append-only ledger is committed; per-run artifacts (predictions, logs) are not ---
+results/*
+!results/ledger.jsonl
+results/runs/
