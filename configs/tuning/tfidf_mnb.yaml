@@ -1,0 +1,14 @@
+# Tuning grid for tfidf_mnb (docs/PLAN.md 1.2, ≤6 configs, val macro-F1, seed 0).
+# MultinomialNB has no learning rate, so the grid is single-axis over its one
+# natural capacity/regularization knob: alpha (Laplace/Lidstone smoothing).
+model: tfidf_mnb
+selection_metric: val_macro_f1
+seed: 0
+note: >
+  No learning rate applies to MultinomialNB; grid is single-axis over
+  alpha (smoothing), the natural capacity knob for this model.
+grid:
+  - {alpha: 0.1}
+  - {alpha: 0.5}
+  - {alpha: 1.0}
+  - {alpha: 2.0}

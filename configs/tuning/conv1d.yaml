@@ -1,0 +1,12 @@
+# Tuning grid for conv1d (docs/PLAN.md 1.2, ≤6 configs, val macro-F1, seed 0).
+# lr × num_filters (the capacity knob for this model).
+model: conv1d
+selection_metric: val_macro_f1
+seed: 0
+grid:
+  - {lr: 0.001, num_filters: 50}
+  - {lr: 0.001, num_filters: 100}
+  - {lr: 0.001, num_filters: 150}
+  - {lr: 0.0005, num_filters: 50}
+  - {lr: 0.0005, num_filters: 100}
+  - {lr: 0.0005, num_filters: 150}

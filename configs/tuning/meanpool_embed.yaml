@@ -1,0 +1,12 @@
+# Tuning grid for meanpool_embed (docs/PLAN.md 1.2, ≤6 configs, val macro-F1, seed 0).
+# lr × dropout (the capacity/regularization knob for this model).
+model: meanpool_embed
+selection_metric: val_macro_f1
+seed: 0
+grid:
+  - {lr: 0.001, dropout: 0.1}
+  - {lr: 0.001, dropout: 0.3}
+  - {lr: 0.001, dropout: 0.5}
+  - {lr: 0.0003, dropout: 0.1}
+  - {lr: 0.0003, dropout: 0.3}
+  - {lr: 0.0003, dropout: 0.5}

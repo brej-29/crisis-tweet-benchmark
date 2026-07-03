@@ -1,0 +1,17 @@
+# Tuning grid for tfidf_logreg (docs/PLAN.md 1.2, ≤6 configs, val macro-F1, seed 0).
+# sklearn's default LogisticRegression solver (lbfgs) has no learning rate;
+# grid is single-axis over C (inverse regularization strength), the natural
+# capacity knob.
+model: tfidf_logreg
+selection_metric: val_macro_f1
+seed: 0
+note: >
+  No learning rate applies to sklearn's lbfgs-solver LogisticRegression;
+  grid is single-axis over C, the natural capacity knob.
+grid:
+  - {C: 0.01}
+  - {C: 0.1}
+  - {C: 0.5}
+  - {C: 1.0}
+  - {C: 5.0}
+  - {C: 10.0}

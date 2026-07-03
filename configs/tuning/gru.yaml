@@ -1,0 +1,12 @@
+# Tuning grid for gru (docs/PLAN.md 1.2, ≤6 configs, val macro-F1, seed 0).
+# lr × hidden_size (the capacity knob for this model).
+model: gru
+selection_metric: val_macro_f1
+seed: 0
+grid:
+  - {lr: 0.001, hidden_size: 32}
+  - {lr: 0.001, hidden_size: 64}
+  - {lr: 0.001, hidden_size: 128}
+  - {lr: 0.0005, hidden_size: 32}
+  - {lr: 0.0005, hidden_size: 64}
+  - {lr: 0.0005, hidden_size: 128}

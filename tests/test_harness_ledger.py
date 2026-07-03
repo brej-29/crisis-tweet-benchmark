@@ -104,6 +104,7 @@ def test_build_run_record_has_required_keys(tmp_path):
         "config_id",
         "protocol",
         "phase",
+        "stage",
         "smoke",
         "train_fraction",
         "dataset_manifest_path",
@@ -120,6 +121,7 @@ def test_build_run_record_has_required_keys(tmp_path):
     assert record["train_fraction"] == 1.0
     assert record["config_id"] == compute_config_id({"strategy": "most_frequent"})
     assert isinstance(record["git_dirty_paths"], list)
+    assert record["stage"] is None
 
 
 def test_build_run_record_honors_explicit_protocol_phase_smoke_and_config_id(tmp_path):
@@ -143,12 +145,14 @@ def test_build_run_record_honors_explicit_protocol_phase_smoke_and_config_id(tmp
         dataset_manifest_path=manifest_path,
         protocol="B",
         phase="phase1",
+        stage="tuning",
         smoke=True,
         train_fraction=0.05,
         config_id="deadbeef",
     )
     assert record["protocol"] == "B"
     assert record["phase"] == "phase1"
+    assert record["stage"] == "tuning"
     assert record["smoke"] is True
     assert record["train_fraction"] == 0.05
     assert record["config_id"] == "deadbeef"

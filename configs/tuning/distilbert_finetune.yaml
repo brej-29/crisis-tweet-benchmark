@@ -1,0 +1,13 @@
+# Tuning grid for distilbert_finetune (docs/PLAN.md 1.2, ≤6 configs, val macro-F1, seed 0).
+# lr × dropout (the capacity/regularization knob for this model). lr values
+# are the standard fine-tuning range for DistilBERT-family models.
+model: distilbert_finetune
+selection_metric: val_macro_f1
+seed: 0
+grid:
+  - {lr: 0.00005, dropout: 0.1}
+  - {lr: 0.00005, dropout: 0.2}
+  - {lr: 0.00005, dropout: 0.3}
+  - {lr: 0.00002, dropout: 0.1}
+  - {lr: 0.00002, dropout: 0.2}
+  - {lr: 0.00002, dropout: 0.3}
