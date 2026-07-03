@@ -18,10 +18,12 @@ from pathlib import Path
 import pandas as pd
 
 from dtc.eval.metrics import compute_all_metrics
+from dtc.harness.config import compute_config_id
 from dtc.harness.ledger import (
     append_run_record,
     generate_run_id,
     get_git_commit_hash,
+    get_git_dirty_paths,
     is_git_dirty,
 )
 
@@ -46,6 +48,11 @@ def build_run_record(
     config: dict,
     metrics: dict,
     dataset_manifest_path: str | Path,
+    protocol: str | None = None,
+    phase: str = "phase0",
+    smoke: bool = False,
+    train_fraction: float = 1.0,
+    config_id: str | None = None,
 ) -> dict:
     manifest = _load_dataset_manifest(dataset_manifest_path)
     try:
@@ -57,11 +64,17 @@ def build_run_record(
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit": get_git_commit_hash(repo_root),
         "git_dirty": is_git_dirty(repo_root),
+        "git_dirty_paths": get_git_dirty_paths(repo_root),
         "model_name": model_name,
         "dataset": dataset,
         "split": split,
         "seed": seed,
         "config": config,
+        "config_id": config_id or compute_config_id(config),
+        "protocol": protocol,
+        "phase": phase,
+        "smoke": smoke,
+        "train_fraction": train_fraction,
         "dataset_manifest_path": manifest_path_str,
         "dataset_split_hashes": _split_hashes(manifest),
         "metrics": metrics,
@@ -111,6 +124,11 @@ def log_evaluation_run(
     y_true,
     y_pred,
     y_prob=None,
+    protocol: str | None = None,
+    phase: str = "phase0",
+    smoke: bool = False,
+    train_fraction: float = 1.0,
+    config_id: str | None = None,
 ) -> dict:
     """Compute metrics, save per-example predictions, and append one ledger line.
 
@@ -137,6 +155,11 @@ def log_evaluation_run(
         config=config,
         metrics=metrics,
         dataset_manifest_path=dataset_manifest_path,
+        protocol=protocol,
+        phase=phase,
+        smoke=smoke,
+        train_fraction=train_fraction,
+        config_id=config_id,
     )
     append_run_record(ledger_path, record)
     return record

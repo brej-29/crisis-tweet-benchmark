@@ -34,8 +34,13 @@ def get_git_commit_hash(repo_root: str | Path) -> str:
         return "unknown"
 
 
-def is_git_dirty(repo_root: str | Path) -> bool:
-    """True if there are uncommitted changes in the working tree."""
+_LEDGER_RELPATH = "results/ledger.jsonl"
+
+
+def get_git_dirty_paths(repo_root: str | Path) -> list[str]:
+    """Returns the list of dirty paths from `git status --porcelain`, forward-slash
+    normalized. Empty list if the tree is clean or git is unavailable.
+    """
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -44,9 +49,30 @@ def is_git_dirty(repo_root: str | Path) -> bool:
             text=True,
             check=True,
         )
-        return bool(result.stdout.strip())
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
+        return []
+    paths = []
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ")[-1]
+        paths.append(path.strip('"').replace("\\", "/"))
+    return paths
+
+
+def is_git_dirty(repo_root: str | Path) -> bool:
+    """True if there are uncommitted changes other than the ledger file itself.
+
+    The ledger dirties itself mid-invocation (appending a line to
+    results/ledger.jsonl makes the tree "dirty" by the time the next run in the
+    same script invocation checks) -- see docs/DECISIONS.md and
+    PHASE0_REPORT.md sec. 5. Excluding that one path keeps this flag meaningful
+    as "did source/config change", not "did the ledger get appended to."
+    """
+    paths = get_git_dirty_paths(repo_root)
+    return any(p != _LEDGER_RELPATH for p in paths)
 
 
 def append_run_record(ledger_path: str | Path, record: dict) -> None:

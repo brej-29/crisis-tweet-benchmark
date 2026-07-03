@@ -6,6 +6,8 @@ import json
 
 import pandas as pd
 
+from dtc.harness import ledger as ledger_module
+from dtc.harness.config import compute_config_id
 from dtc.harness.ledger import (
     append_run_record,
     generate_run_id,
@@ -93,11 +95,17 @@ def test_build_run_record_has_required_keys(tmp_path):
         "timestamp_utc",
         "git_commit",
         "git_dirty",
+        "git_dirty_paths",
         "model_name",
         "dataset",
         "split",
         "seed",
         "config",
+        "config_id",
+        "protocol",
+        "phase",
+        "smoke",
+        "train_fraction",
         "dataset_manifest_path",
         "dataset_split_hashes",
         "metrics",
@@ -105,6 +113,71 @@ def test_build_run_record_has_required_keys(tmp_path):
     assert required_keys <= set(record.keys())
     assert record["dataset_split_hashes"] == {"train": "aaa", "val": "bbb", "test": "ccc"}
     assert record["seed"] == 42
+    # defaults, since this call site didn't pass protocol/phase/smoke/train_fraction/config_id
+    assert record["protocol"] is None
+    assert record["phase"] == "phase0"
+    assert record["smoke"] is False
+    assert record["train_fraction"] == 1.0
+    assert record["config_id"] == compute_config_id({"strategy": "most_frequent"})
+    assert isinstance(record["git_dirty_paths"], list)
+
+
+def test_build_run_record_honors_explicit_protocol_phase_smoke_and_config_id(tmp_path):
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps({"splits": {"train": {"sha256": "a"}, "val": {"sha256": "b"}, "test": {"sha256": "c"}}}),
+        encoding="utf-8",
+    )
+    record = build_run_record(
+        run_id="test-run-2",
+        repo_root=repo_root,
+        model_name="bilstm",
+        dataset="kaggle_nlp_getting_started",
+        split="test",
+        seed=1,
+        config={"lr": 0.001},
+        metrics={"accuracy": 0.9},
+        dataset_manifest_path=manifest_path,
+        protocol="B",
+        phase="phase1",
+        smoke=True,
+        train_fraction=0.05,
+        config_id="deadbeef",
+    )
+    assert record["protocol"] == "B"
+    assert record["phase"] == "phase1"
+    assert record["smoke"] is True
+    assert record["train_fraction"] == 0.05
+    assert record["config_id"] == "deadbeef"
+
+
+def test_compute_config_id_is_deterministic_and_key_order_independent():
+    c1 = {"a": 1, "b": 2}
+    c2 = {"b": 2, "a": 1}
+    assert compute_config_id(c1) == compute_config_id(c2)
+    assert compute_config_id({"a": 1, "b": 3}) != compute_config_id(c1)
+
+
+def test_is_git_dirty_ignores_ledger_only_changes(monkeypatch):
+    monkeypatch.setattr(ledger_module, "get_git_dirty_paths", lambda repo_root: ["results/ledger.jsonl"])
+    assert ledger_module.is_git_dirty("unused") is False
+
+
+def test_is_git_dirty_true_when_non_ledger_paths_dirty(monkeypatch):
+    monkeypatch.setattr(
+        ledger_module,
+        "get_git_dirty_paths",
+        lambda repo_root: ["results/ledger.jsonl", "src/dtc/models/lstm.py"],
+    )
+    assert ledger_module.is_git_dirty("unused") is True
+
+
+def test_is_git_dirty_false_when_tree_clean(monkeypatch):
+    monkeypatch.setattr(ledger_module, "get_git_dirty_paths", lambda repo_root: [])
+    assert ledger_module.is_git_dirty("unused") is False
 
 
 def test_save_predictions_writes_expected_columns(tmp_path):
