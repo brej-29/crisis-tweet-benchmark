@@ -1,0 +1,211 @@
+{
+  "dataset": "crisislex_t6",
+  "raw_dir": "data/crisislex/raw",
+  "raw_file_sha256": {
+    "2012_Sandy_Hurricane": "0425c3e2421a3cd94a8a5628461fa4c0ca0e3448701138f54903fa781dcdbf01",
+    "2013_Alberta_Floods": "b2f9906312637efdd9c4ef1c80930c5601a2deccce3e72bf6cf810cc3770cde8",
+    "2013_Boston_Bombings": "eddbae6c7d3797fc155fffb339e436bec4eeec9331c57d33baff74acead2d33c",
+    "2013_Oklahoma_Tornado": "3d54c4523364525838bb4207baafc592f4bb6ff7eb1371c0cfda400cfd0a1056",
+    "2013_Queensland_Floods": "d4c209dc9caf9537f1bf7043074900e015bf85032940b8ec82d6e8f0a4305d2d",
+    "2013_West_Texas_Explosion": "e340b82760c2f6d1b4af74af6bf35b3a8596c00859cd8fa123b1540f1319faf1"
+  },
+  "raw_row_count": 60082,
+  "exact_duplicate_row_count": 4705,
+  "dropped_conflicting_row_count": 533,
+  "dropped_conflicting_group_count": 101,
+  "deduped_row_count": 55276,
+  "seed": 42,
+  "split_ratios": {
+    "train": 0.8,
+    "val": 0.1,
+    "test": 0.1
+  },
+  "splits": {
+    "train": {
+      "row_count": 44220,
+      "sha256": "a650981400fcbbd67af0e347dd87d77dc2e3e849bd4afbd05725c945e0f4822c",
+      "class_balance": {
+        "counts": {
+          "1": 22252,
+          "0": 21968
+        },
+        "positive_rate": 0.5032112166440524,
+        "total": 44220
+      },
+      "per_event_class_balance": {
+        "2012_Sandy_Hurricane": {
+          "counts": {
+            "1": 4444,
+            "0": 3078
+          },
+          "positive_rate": 0.5908003190640787,
+          "total": 7522
+        },
+        "2013_Alberta_Floods": {
+          "counts": {
+            "0": 3862,
+            "1": 3683
+          },
+          "positive_rate": 0.4881378396288933,
+          "total": 7545
+        },
+        "2013_Boston_Bombings": {
+          "counts": {
+            "1": 3888,
+            "0": 3486
+          },
+          "positive_rate": 0.5272579332790887,
+          "total": 7374
+        },
+        "2013_Oklahoma_Tornado": {
+          "counts": {
+            "0": 4139,
+            "1": 3314
+          },
+          "positive_rate": 0.4446531598014222,
+          "total": 7453
+        },
+        "2013_Queensland_Floods": {
+          "counts": {
+            "0": 3662,
+            "1": 3529
+          },
+          "positive_rate": 0.49075232930051454,
+          "total": 7191
+        },
+        "2013_West_Texas_Explosion": {
+          "counts": {
+            "0": 3741,
+            "1": 3394
+          },
+          "positive_rate": 0.4756832515767344,
+          "total": 7135
+        }
+      }
+    },
+    "val": {
+      "row_count": 5528,
+      "sha256": "f47ece2dfbf36a404cb33fcbf0c94299a41f209fe820a6938f792ce487b21aa1",
+      "class_balance": {
+        "counts": {
+          "1": 2781,
+          "0": 2747
+        },
+        "positive_rate": 0.5030752532561505,
+        "total": 5528
+      },
+      "per_event_class_balance": {
+        "2012_Sandy_Hurricane": {
+          "counts": {
+            "1": 548,
+            "0": 410
+          },
+          "positive_rate": 0.5720250521920668,
+          "total": 958
+        },
+        "2013_Alberta_Floods": {
+          "counts": {
+            "0": 458,
+            "1": 456
+          },
+          "positive_rate": 0.4989059080962801,
+          "total": 914
+        },
+        "2013_Boston_Bombings": {
+          "counts": {
+            "1": 488,
+            "0": 429
+          },
+          "positive_rate": 0.5321701199563795,
+          "total": 917
+        },
+        "2013_Oklahoma_Tornado": {
+          "counts": {
+            "0": 507,
+            "1": 432
+          },
+          "positive_rate": 0.46006389776357826,
+          "total": 939
+        },
+        "2013_Queensland_Floods": {
+          "counts": {
+            "0": 469,
+            "1": 462
+          },
+          "positive_rate": 0.49624060150375937,
+          "total": 931
+        },
+        "2013_West_Texas_Explosion": {
+          "counts": {
+            "0": 474,
+            "1": 395
+          },
+          "positive_rate": 0.45454545454545453,
+          "total": 869
+        }
+      }
+    },
+    "test": {
+      "row_count": 5528,
+      "sha256": "cc8d74ecdb9c73f281eb2d878a6e40ccd3906df31bc3b189ea8384232dad495b",
+      "class_balance": {
+        "counts": {
+          "1": 2782,
+          "0": 2746
+        },
+        "positive_rate": 0.5032561505065123,
+        "total": 5528
+      },
+      "per_event_class_balance": {
+        "2012_Sandy_Hurricane": {
+          "counts": {
+            "1": 574,
+            "0": 355
+          },
+          "positive_rate": 0.6178686759956943,
+          "total": 929
+        },
+        "2013_Alberta_Floods": {
+          "counts": {
+            "0": 480,
+            "1": 431
+          },
+          "positive_rate": 0.47310647639956094,
+          "total": 911
+        },
+        "2013_Boston_Bombings": {
+          "counts": {
+            "1": 497,
+            "0": 424
+          },
+          "positive_rate": 0.5396308360477742,
+          "total": 921
+        },
+        "2013_Oklahoma_Tornado": {
+          "counts": {
+            "0": 489,
+            "1": 416
+          },
+          "positive_rate": 0.45966850828729283,
+          "total": 905
+        },
+        "2013_Queensland_Floods": {
+          "counts": {
+            "0": 471,
+            "1": 429
+          },
+          "positive_rate": 0.4766666666666667,
+          "total": 900
+        },
+        "2013_West_Texas_Explosion": {
+          "counts": {
+            "0": 527,
+            "1": 435
+          },
+          "positive_rate": 0.4521829521829522,
+          "total": 962
+        }
+      }
+    }
+  }
+}

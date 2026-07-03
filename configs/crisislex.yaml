@@ -1,0 +1,11 @@
+dataset: crisislex_t6
+raw_dir: data/crisislex/raw
+output_dir: data/crisislex
+seed: 42
+text_col: text
+label_col: label
+id_col: tweet_id
+split:
+  train: 0.8
+  val: 0.1
+  test: 0.1
