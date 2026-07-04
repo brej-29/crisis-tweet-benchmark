@@ -67,6 +67,7 @@ def build_run_specs(
     experiments: dict,
     only: list[str] | None = None,
     models_filter: list[str] | None = None,
+    seeds_filter: list[int] | None = None,
     repo_root: Path = REPO_ROOT,
 ) -> list[dict]:
     """Flattens configs/experiments.yaml into one dict per individual run
@@ -82,7 +83,7 @@ def build_run_specs(
             continue
         exp = experiments[exp_key]
         models = [m for m in exp["models"] if models_filter is None or m in models_filter]
-        seeds = exp["seeds"]
+        seeds = [s for s in exp["seeds"] if seeds_filter is None or s in seeds_filter]
         fractions = exp.get("train_fractions", [exp.get("train_fraction", 1.0)])
         config_source = exp["config_source"]
         for model_name in models:
@@ -269,12 +270,15 @@ def main(
     repo_root: Path = REPO_ROOT,
     only: list[str] | None = None,
     models_filter: list[str] | None = None,
+    seeds_filter: list[int] | None = None,
     dry_run: bool = False,
     smoke: bool = False,
     smoke_n: int = 200,
 ) -> list[dict]:
     experiments = load_experiments_config(experiments_config_path)
-    specs = build_run_specs(experiments, only=only, models_filter=models_filter, repo_root=repo_root)
+    specs = build_run_specs(
+        experiments, only=only, models_filter=models_filter, seeds_filter=seeds_filter, repo_root=repo_root
+    )
 
     ledger_path = repo_root / "results" / "ledger.jsonl"
     ledgered_keys = _already_ledgered_keys(read_ledger(ledger_path))
@@ -339,6 +343,7 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--only", nargs="*", default=None, help="Experiment keys to include, e.g. e1 e2")
     parser.add_argument("--models", nargs="*", default=None, help="Model names to include")
+    parser.add_argument("--seeds", nargs="*", type=int, default=None, help="Seeds to include")
     parser.add_argument("--smoke", action="store_true", help="Tiny-subset smoke mode, tagged smoke=true")
     parser.add_argument("--smoke-n", type=int, default=200)
     args = parser.parse_args()
@@ -346,6 +351,7 @@ if __name__ == "__main__":
     outcome = main(
         only=args.only,
         models_filter=args.models,
+        seeds_filter=args.seeds,
         dry_run=args.dry_run,
         smoke=args.smoke,
         smoke_n=args.smoke_n,

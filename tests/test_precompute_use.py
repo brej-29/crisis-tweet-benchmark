@@ -53,6 +53,32 @@ def test_precompute_use_embeds_20_texts_and_hits_cache_on_rerun(tmp_path, monkey
 
 
 @pytest.mark.slow
+def test_precompute_use_caches_under_cleaned_text_hash_not_raw(tmp_path, monkeypatch):
+    """Regression test: dtc.models.use_frozen hashes CLEANED text (NFC +
+    whitespace-collapsed) at fit/predict time, so the cache must be keyed
+    the same way or lookups raise KeyError -- caught for real during Task 8
+    smoke verification (see docs/DECISIONS.md).
+    """
+    module = _load_precompute_use_module()
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+
+    dataset_dir = tmp_path / "data" / "smoke_dataset3"
+    dataset_dir.mkdir(parents=True)
+    raw_text = "  disaster   tweet  with   extra   whitespace  "
+    for split, texts in (("train", [raw_text]), ("val", []), ("test", [])):
+        pd.DataFrame({"text": texts}).to_csv(dataset_dir / f"{split}.csv", index=False)
+
+    module.main("smoke_dataset3", splits=("train", "val", "test"))
+
+    from dtc.data.text import clean_text
+    from dtc.data.use_cache import load_embedding
+
+    cache_dir = dataset_dir / "use_embeddings"
+    embedding = load_embedding(cache_dir, clean_text(raw_text))
+    assert embedding.shape == (512,)
+
+
+@pytest.mark.slow
 def test_precompute_use_embeds_extra_csv_paths(tmp_path, monkeypatch):
     module = _load_precompute_use_module()
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)

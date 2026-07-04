@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from dtc.data.text import clean_series
 from dtc.data.use_cache import embedding_path, hash_of_hashes, save_embedding, write_manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -32,9 +33,13 @@ USE_MODEL_URL = "https://tfhub.dev/google/universal-sentence-encoder/4"
 SPLITS = ("train", "val", "test")
 
 
-def load_split_texts(dataset: str, split: str) -> pd.Series:
+def load_split_texts(dataset: str, split: str) -> list[str]:
+    """Returns CLEANED text (dtc.data.text.clean_text), matching what
+    dtc.models.use_frozen hashes at fit/predict time -- caching raw,
+    uncleaned text here would produce SHA256 keys the model never looks up.
+    """
     path = REPO_ROOT / "data" / dataset / f"{split}.csv"
-    return pd.read_csv(path)["text"]
+    return clean_series(pd.read_csv(path)["text"])
 
 
 def embed_and_cache(texts, cache_dir: Path, encoder) -> int:
@@ -65,12 +70,12 @@ def main(dataset: str, splits: tuple[str, ...] = SPLITS, extra_csv_paths: tuple[
     new_counts = {}
     for split in splits:
         texts = load_split_texts(dataset, split)
-        all_texts.extend(texts.tolist())
+        all_texts.extend(texts)
         new_counts[split] = embed_and_cache(texts, cache_dir, encoder)
 
     for extra_path in extra_csv_paths:
-        texts = pd.read_csv(extra_path)["text"]
-        all_texts.extend(texts.tolist())
+        texts = clean_series(pd.read_csv(extra_path)["text"])
+        all_texts.extend(texts)
         new_counts[str(extra_path)] = embed_and_cache(texts, cache_dir, encoder)
 
     manifest_path = write_manifest(

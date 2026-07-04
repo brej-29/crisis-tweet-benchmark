@@ -19,11 +19,12 @@ def _load_select_configs_module():
     return module
 
 
-def _record(model_name, macro_f1, config, stage="tuning"):
+def _record(model_name, macro_f1, config, stage="tuning", smoke=False):
     return {
         "model_name": model_name,
         "stage": stage,
         "config": config,
+        "smoke": smoke,
         "metrics": {"macro_f1": macro_f1},
     }
 
@@ -51,6 +52,26 @@ def test_select_best_configs_ignores_non_tuning_stage_records():
     ]
     winners = module.select_best_configs(records)
     assert winners["lstm"] == {"lr": 0.001, "hidden_size": 32}
+
+
+def test_select_best_configs_excludes_smoke_by_default():
+    module = _load_select_configs_module()
+    records = [
+        _record("lstm", 0.99, {"lr": 0.1, "hidden_size": 999}, smoke=True),
+        _record("lstm", 0.70, {"lr": 0.001, "hidden_size": 32}, smoke=False),
+    ]
+    winners = module.select_best_configs(records)
+    assert winners["lstm"] == {"lr": 0.001, "hidden_size": 32}  # the smoke winner is excluded
+
+
+def test_select_best_configs_include_smoke_true_considers_smoke_records():
+    module = _load_select_configs_module()
+    records = [
+        _record("lstm", 0.99, {"lr": 0.1, "hidden_size": 999}, smoke=True),
+        _record("lstm", 0.70, {"lr": 0.001, "hidden_size": 32}, smoke=False),
+    ]
+    winners = module.select_best_configs(records, include_smoke=True)
+    assert winners["lstm"] == {"lr": 0.1, "hidden_size": 999}
 
 
 def test_select_best_configs_respects_models_filter():
