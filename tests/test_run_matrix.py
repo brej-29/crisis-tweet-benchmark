@@ -106,13 +106,34 @@ def test_skip_key_distinguishes_smoke_from_real_runs():
 def test_real_experiments_yaml_parses_with_expected_shape():
     module = _load_run_matrix_module()
     experiments = module.load_experiments_config()
-    assert set(experiments.keys()) == {"e1", "e2", "e3"}
+    assert set(experiments.keys()) == {"tuning", "e1", "e2", "e3"}
     assert experiments["e1"]["seeds"] == [0, 1, 2, 3, 4]
     assert experiments["e2"]["seeds"] == [42]
     assert experiments["e2"]["protocol"] == "A"
     assert len(experiments["e1"]["models"]) == 9
     assert len(experiments["e3"]["models"]) == 5
     assert experiments["e3"]["train_fractions"] == [0.01, 0.05, 0.10, 0.25, 0.50, 1.0]
+    assert experiments["tuning"]["config_source"] == "tuning"
+    assert len(experiments["tuning"]["models"]) == 9
+
+
+def test_build_run_specs_expands_tuning_grid_into_one_spec_per_entry():
+    module = _load_run_matrix_module()
+    experiments = module.load_experiments_config()
+    specs = module.build_run_specs(experiments, only=["tuning"], models_filter=["tfidf_mnb"])
+    # configs/tuning/tfidf_mnb.yaml has 4 grid entries, single seed 0
+    assert len(specs) == 4
+    assert all(s["stage"] == "tuning" for s in specs)
+    assert {s["grid_index"] for s in specs} == {0, 1, 2, 3}
+    assert all(isinstance(s["grid_config"], dict) for s in specs)
+
+
+def test_dry_run_enumerates_full_matrix_including_tuning():
+    module = _load_run_matrix_module()
+    experiments = module.load_experiments_config()
+    specs = module.build_run_specs(experiments)
+    stages = {s["stage"] for s in specs}
+    assert stages == {"tuning", "E1", "E2", "E3"}
 
 
 def _build_tiny_kaggle_fixture(tmp_path: Path, n: int = 40) -> None:

@@ -5,6 +5,29 @@
 # non-smoke run with the same (stage, protocol, model_name, config_id,
 # seed, train_fraction) tuple.
 
+tuning:
+  # Task 4: one run per (model, grid-config-entry), single seed 0, Protocol
+  # B data, evaluated on VAL (selection metric = val macro-F1), ledgered
+  # with stage: tuning. config_source: tuning means each model's config
+  # comes from configs/tuning/<model>.yaml's `grid` list (one run per grid
+  # entry) rather than a single fixed config file.
+  stage: tuning
+  protocol: B
+  dataset: kaggle
+  models:
+    - tfidf_mnb
+    - tfidf_logreg
+    - meanpool_embed
+    - lstm
+    - gru
+    - bilstm
+    - conv1d
+    - use_frozen
+    - distilbert_finetune
+  config_source: tuning
+  seeds: [0]
+  train_fraction: 1.0
+
 e1:
   # Protocol B finals: 9 models x final (tuned) config x 5 seeds, evaluated
   # ONCE per run on the frozen Kaggle test split.

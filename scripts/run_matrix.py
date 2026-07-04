@@ -55,12 +55,27 @@ def _load_yaml_config(path: Path) -> dict:
         return yaml.safe_load(f) or {}
 
 
+def _load_tuning_grid(path: Path) -> list[dict]:
+    if not path.exists():
+        raise FileNotFoundError(f"No tuning grid at {path} (docs/PLAN.md Task 4).")
+    with open(path, encoding="utf-8") as f:
+        doc = yaml.safe_load(f) or {}
+    return doc["grid"]
+
+
 def build_run_specs(
-    experiments: dict, only: list[str] | None = None, models_filter: list[str] | None = None
+    experiments: dict,
+    only: list[str] | None = None,
+    models_filter: list[str] | None = None,
+    repo_root: Path = REPO_ROOT,
 ) -> list[dict]:
     """Flattens configs/experiments.yaml into one dict per individual run
-    (enumeration axes only -- config resolution happens later, per-run,
-    since it can depend on data (Protocol A's mean_token_length))."""
+    (enumeration axes only -- most config resolution happens later, per-run,
+    since it can depend on data (Protocol A's mean_token_length)). The one
+    exception is `config_source: tuning`: each model's grid is read here
+    (cheap, static YAML) so one run spec is produced per grid entry, not
+    per model.
+    """
     specs = []
     for exp_key in sorted(experiments):
         if only is not None and exp_key not in only:
@@ -69,22 +84,31 @@ def build_run_specs(
         models = [m for m in exp["models"] if models_filter is None or m in models_filter]
         seeds = exp["seeds"]
         fractions = exp.get("train_fractions", [exp.get("train_fraction", 1.0)])
+        config_source = exp["config_source"]
         for model_name in models:
-            for seed in seeds:
-                for fraction in fractions:
-                    specs.append(
-                        {
-                            "experiment_key": exp_key,
-                            "stage": exp["stage"],
-                            "protocol": exp["protocol"],
-                            "dataset": exp["dataset"],
-                            "model_name": model_name,
-                            "config_source": exp["config_source"],
-                            "seed": seed,
-                            "train_fraction": fraction,
-                            "all_fractions": fractions,
-                        }
-                    )
+            grid_configs: list[dict | None]
+            if config_source == "tuning":
+                grid_configs = _load_tuning_grid(repo_root / "configs" / "tuning" / f"{model_name}.yaml")
+            else:
+                grid_configs = [None]  # resolved later from a single config file
+            for grid_index, grid_config in enumerate(grid_configs):
+                for seed in seeds:
+                    for fraction in fractions:
+                        specs.append(
+                            {
+                                "experiment_key": exp_key,
+                                "stage": exp["stage"],
+                                "protocol": exp["protocol"],
+                                "dataset": exp["dataset"],
+                                "model_name": model_name,
+                                "config_source": config_source,
+                                "grid_index": grid_index if config_source == "tuning" else None,
+                                "grid_config": grid_config,
+                                "seed": seed,
+                                "train_fraction": fraction,
+                                "all_fractions": fractions,
+                            }
+                        )
     return specs
 
 
@@ -138,8 +162,11 @@ def _protocol_a_max_length_override(model_name: str, train_texts) -> dict:
 
 
 def resolve_config(spec: dict, repo_root: Path, train_texts) -> dict:
-    configs_dir = repo_root / "configs" / spec["config_source"]
-    config = dict(_load_yaml_config(configs_dir / f"{spec['model_name']}.yaml"))
+    if spec["config_source"] == "tuning":
+        config = dict(spec["grid_config"])
+    else:
+        configs_dir = repo_root / "configs" / spec["config_source"]
+        config = dict(_load_yaml_config(configs_dir / f"{spec['model_name']}.yaml"))
 
     if spec["model_name"] == "use_frozen":
         config["use_cache_dir"] = str(repo_root / "data" / spec["dataset"] / "use_embeddings")
@@ -206,6 +233,23 @@ def execute_run(spec: dict, repo_root: Path, *, smoke: bool, smoke_n: int) -> di
             y_prob=y_prob,
             dataset_split_hashes=split_hashes,
         )
+    elif spec["stage"] == "tuning":
+        # Task 4: selection metric is val macro-F1 -- evaluate on val
+        # directly (never the frozen test split; tuning is a
+        # model-selection step, not a final report).
+        y_prob = model.predict_proba(eval_df["text"])
+        y_pred = (y_prob >= 0.5).astype(int)
+        manifest_path = repo_root / "data" / dataset / "manifest.json"
+        record = log_evaluation_run(
+            **common_kwargs,
+            split="val",
+            ids=eval_df["id"],
+            texts=eval_df["text"],
+            y_true=eval_df["label"].to_numpy(),
+            y_pred=y_pred,
+            y_prob=y_prob,
+            dataset_manifest_path=manifest_path,
+        )
     else:
         eval_fields = evaluate_model_on_frozen_test(model, repo_root, dataset)
         manifest_path = repo_root / "data" / dataset / "manifest.json"
@@ -230,7 +274,7 @@ def main(
     smoke_n: int = 200,
 ) -> list[dict]:
     experiments = load_experiments_config(experiments_config_path)
-    specs = build_run_specs(experiments, only=only, models_filter=models_filter)
+    specs = build_run_specs(experiments, only=only, models_filter=models_filter, repo_root=repo_root)
 
     ledger_path = repo_root / "results" / "ledger.jsonl"
     ledgered_keys = _already_ledgered_keys(read_ledger(ledger_path))
