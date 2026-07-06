@@ -5,12 +5,22 @@ Excludes smoke runs by default. Refuses to emit any table referencing a
 run whose git_dirty_paths includes a source file (ledger hygiene: every
 number must trace to a run against a clean commit). T1 additionally
 refuses if any model has more than one distinct config_id among its
-non-smoke E1 records -- mixing configs would silently average runs
-trained under different final configs.
+non-smoke E1 records, and T4 the same per (model, train_fraction) --
+mixing configs would silently average runs trained under different final
+configs (the ledger is append-only, so a config regenerated after some
+runs already happened doesn't erase the old runs' entries).
+
+Use `--only-config-ids-from configs/final` to resolve, per model, the
+config_id that model's CURRENT configs/final/<model>.yaml would produce,
+and filter every table's input records down to just that config_id --
+this is how you recover from the mixed-config refusal once a real config
+has superseded an earlier (e.g. smoke-placeholder) one, without editing
+or deleting any ledger line (docs/DECISIONS.md; Phase 1.5).
 
 Usage:
     uv run python scripts/make_tables.py
     uv run python scripts/make_tables.py --include-smoke   # demo only, watermarked SMOKE
+    uv run python scripts/make_tables.py --only-config-ids-from configs/final
 """
 
 from __future__ import annotations
@@ -19,6 +29,9 @@ import argparse
 import statistics
 from pathlib import Path
 
+import yaml
+
+from dtc.harness.config import compute_config_id
 from dtc.harness.ledger import read_ledger
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -30,9 +43,10 @@ class DirtyLedgerError(RuntimeError):
 
 
 class MixedConfigError(RuntimeError):
-    """Raised when a model has more than one distinct config_id among its
-    non-smoke E1 records -- pooling those into one mean/std would silently
-    average runs trained under different final configs."""
+    """Raised when a model (T1) or a (model, train_fraction) pair (T4) has
+    more than one distinct config_id among its non-smoke records --
+    pooling those into one mean/std would silently average runs trained
+    under different final configs."""
 
 
 def _is_source_path(path: str) -> bool:
@@ -51,8 +65,67 @@ def check_single_config_per_model(e1_records: list[dict]) -> None:
     if offenders:
         details = "; ".join(f"{model}: {ids}" for model, ids in sorted(offenders.items()))
         raise MixedConfigError(
-            f"Refusing to build T1: model(s) with multiple distinct config_ids among non-smoke E1 records: {details}"
+            f"Refusing to build T1: model(s) with multiple distinct config_ids among non-smoke E1 records: {details}. "
+            "Use --only-config-ids-from configs/final to filter to each model's current config."
         )
+
+
+def check_single_config_per_model_fraction(e3_records: list[dict]) -> None:
+    """T4's analogue of check_single_config_per_model, grouped by
+    (model_name, train_fraction) instead of model_name alone. Smoke E3
+    records are exempt, same rationale."""
+    non_smoke = [r for r in e3_records if not r.get("smoke", False)]
+    by_key: dict[tuple[str, float], set[str]] = {}
+    for r in non_smoke:
+        key = (r["model_name"], r["train_fraction"])
+        by_key.setdefault(key, set()).add(r.get("config_id"))
+    offenders = {key: sorted(ids) for key, ids in by_key.items() if len(ids) > 1}
+    if offenders:
+        details = "; ".join(f"{model}@{fraction}: {ids}" for (model, fraction), ids in sorted(offenders.items()))
+        raise MixedConfigError(
+            f"Refusing to build T4: model/fraction combo(s) with multiple distinct config_ids among non-smoke "
+            f"E3 records: {details}. Use --only-config-ids-from configs/final to filter to each model's current config."
+        )
+
+
+def resolve_final_config_ids(
+    final_configs_dir: str | Path, *, dataset: str = "kaggle", repo_root: str | Path = REPO_ROOT
+) -> dict[str, str]:
+    """For each `<final_configs_dir>/<model>.yaml`, computes the config_id
+    a real (non-smoke) run using that exact config would produce.
+
+    Replicates the one piece of scripts/run_matrix.py's `resolve_config()`
+    injection that affects `use_frozen`'s config_id (its `use_cache_dir`)
+    without importing run_matrix.py itself -- Phase 1.5 Hard Rule 1 is
+    additive/guard changes only, no driver changes. Models with no
+    `<model>.yaml` file in `final_configs_dir` are simply absent from the
+    returned dict.
+    """
+    final_configs_dir = Path(final_configs_dir)
+    result = {}
+    for path in sorted(final_configs_dir.glob("*.yaml")):
+        model_name = path.stem
+        config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if model_name == "use_frozen":
+            config = {**config, "use_cache_dir": str(Path(repo_root) / "data" / dataset / "use_embeddings")}
+        result[model_name] = compute_config_id(config)
+    return result
+
+
+def filter_to_final_config_ids(records: list[dict], final_config_ids: dict[str, str]) -> list[dict]:
+    """Keeps a record if its model has no resolvable "current" config (no
+    file in the given final_configs_dir -- passed through unfiltered, so
+    the mixed-config check still catches genuine ambiguity for it) or if
+    its config_id matches that model's current final config; drops
+    records whose config_id has been superseded by a later regeneration
+    of configs/final/<model>.yaml.
+    """
+    kept = []
+    for r in records:
+        expected = final_config_ids.get(r.get("model_name"))
+        if expected is None or r.get("config_id") == expected:
+            kept.append(r)
+    return kept
 
 
 def check_no_dirty_source_runs(records: list[dict]) -> None:
@@ -155,6 +228,7 @@ def build_t3_seed_variance(records: list[dict]) -> list[dict]:
 
 def build_t4_data_efficiency(records: list[dict]) -> list[dict]:
     e3 = [r for r in records if r.get("stage") == "E3"]
+    check_single_config_per_model_fraction(e3)
     by_key: dict[tuple[str, float], list[float]] = {}
     for r in e3:
         key = (r["model_name"], r["train_fraction"])
@@ -235,10 +309,14 @@ def main(
     ledger_path: str | Path = REPO_ROOT / "results" / "ledger.jsonl",
     output_dir: str | Path = REPO_ROOT / "results" / "tables",
     include_smoke: bool = False,
+    only_config_ids_from: str | Path | None = None,
 ) -> dict[str, Path]:
     records = read_ledger(ledger_path)
     if not include_smoke:
         records = [r for r in records if not r.get("smoke", False)]
+    if only_config_ids_from is not None:
+        final_config_ids = resolve_final_config_ids(only_config_ids_from)
+        records = filter_to_final_config_ids(records, final_config_ids)
     check_no_dirty_source_runs(records)
 
     banner = "SMOKE DATA -- placeholder, not real results" if include_smoke else None
@@ -265,7 +343,17 @@ if __name__ == "__main__":
     parser.add_argument("--ledger", type=Path, default=REPO_ROOT / "results" / "ledger.jsonl")
     parser.add_argument("--output-dir", type=Path, default=REPO_ROOT / "results" / "tables")
     parser.add_argument("--include-smoke", action="store_true", help="Include smoke runs, watermarked SMOKE (demo only)")
+    parser.add_argument(
+        "--only-config-ids-from",
+        type=Path,
+        default=None,
+        help="Directory of <model>.yaml configs (e.g. configs/final) to resolve each model's CURRENT "
+        "config_id from; records using a different (superseded) config_id are filtered out before "
+        "aggregation, instead of refusing on mixed config_ids.",
+    )
     args = parser.parse_args()
-    result = main(args.ledger, args.output_dir, include_smoke=args.include_smoke)
+    result = main(
+        args.ledger, args.output_dir, include_smoke=args.include_smoke, only_config_ids_from=args.only_config_ids_from
+    )
     for name, path in result.items():
         print(f"{name}: {path}")
