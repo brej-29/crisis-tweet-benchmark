@@ -420,6 +420,21 @@ are order-of-magnitude planning estimates, not measured full-scale numbers):
 | `use_frozen` | 2-6s | tens of seconds (linear head only) | seconds |
 | `distilbert_finetune` | 2-6 min per config | 15-40 min per run (CPU) | 1-4 min per run (GPU) |
 
+**Measured GPU smoke run (Phase 1.6)**: after switching to a CUDA build of
+torch (`torch==2.12.1+cu126`, see `docs/DECISIONS.md`), one real
+`distilbert_finetune` E1 smoke run (seed 2, ~200-example subset, run
+through `scripts/run_matrix.py --smoke --only e1 --models
+distilbert_finetune --seeds 2`, `run_id=2ef5d73089d74501b53334eea759cb4b`)
+completed in **42s wall time** on the local RTX 3050 (6GB) — vs. the 2-6
+min CPU smoke estimate above. GPU execution was confirmed two ways: the
+run's `dtc.models.torch_common.get_device()` call returns `cuda` whenever
+`torch.cuda.is_available()` is `True`, and the training step raised
+PyTorch's determinism warning from
+`aten/src/ATen/native/transformers/cuda/attention_backward.cu` (a
+CUDA-only code path, never reached on CPU). This is one anecdotal
+data point at smoke scale, not a full-scale benchmark, but it directionally
+confirms the GPU-vs-CPU gap this section estimated.
+
 At these rates, E1 (45 runs, dominated by 5 DistilBERT runs) is CPU-hours
 on a laptop but well under an hour on a T4; the full tuning stage (52
 configs, 6 of them DistilBERT) is the single most expensive piece and is
