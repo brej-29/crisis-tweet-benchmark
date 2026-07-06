@@ -1,3 +1,3 @@
 hidden_size: 128
-lr: 0.001
-use_cache_dir: D:\Project\disaster-tweet-reeval\data\kaggle\use_embeddings
+lr: 0.0005
+use_cache_dir: D:\Project\crisis-tweet-benchmark\data\kaggle\use_embeddings

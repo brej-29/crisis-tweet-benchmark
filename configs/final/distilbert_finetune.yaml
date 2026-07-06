@@ -1,2 +1,2 @@
-dropout: 0.3
+dropout: 0.2
 lr: 2.0e-05
