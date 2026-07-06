@@ -3,7 +3,10 @@ never hand-typed (docs/PLAN.md Task 7). Idempotent: re-running with the
 same ledger state overwrites the same files with identical content.
 Excludes smoke runs by default. Refuses to emit any table referencing a
 run whose git_dirty_paths includes a source file (ledger hygiene: every
-number must trace to a run against a clean commit).
+number must trace to a run against a clean commit). T1 additionally
+refuses if any model has more than one distinct config_id among its
+non-smoke E1 records -- mixing configs would silently average runs
+trained under different final configs.
 
 Usage:
     uv run python scripts/make_tables.py
@@ -26,8 +29,30 @@ class DirtyLedgerError(RuntimeError):
     """Raised when a referenced run's git_dirty_paths includes source files."""
 
 
+class MixedConfigError(RuntimeError):
+    """Raised when a model has more than one distinct config_id among its
+    non-smoke E1 records -- pooling those into one mean/std would silently
+    average runs trained under different final configs."""
+
+
 def _is_source_path(path: str) -> bool:
     return not path.startswith(_NON_SOURCE_PREFIXES)
+
+
+def check_single_config_per_model(e1_records: list[dict]) -> None:
+    """Smoke E1 records are exempt: they may legitimately use different
+    (placeholder) configs across a session, so only non-smoke records are
+    checked for config consistency."""
+    non_smoke = [r for r in e1_records if not r.get("smoke", False)]
+    by_model: dict[str, set[str]] = {}
+    for r in non_smoke:
+        by_model.setdefault(r["model_name"], set()).add(r.get("config_id"))
+    offenders = {model: sorted(ids) for model, ids in by_model.items() if len(ids) > 1}
+    if offenders:
+        details = "; ".join(f"{model}: {ids}" for model, ids in sorted(offenders.items()))
+        raise MixedConfigError(
+            f"Refusing to build T1: model(s) with multiple distinct config_ids among non-smoke E1 records: {details}"
+        )
 
 
 def check_no_dirty_source_runs(records: list[dict]) -> None:
@@ -50,6 +75,7 @@ def _mean_std(values: list[float]) -> tuple[float, float]:
 def build_t1_protocol_b_main(records: list[dict]) -> list[dict]:
     """Per model: test accuracy/macro-F1/positive-F1 mean +- std over seeds."""
     e1 = [r for r in records if r.get("stage") == "E1" and r.get("protocol") == "B" and r.get("split") == "test"]
+    check_single_config_per_model(e1)
     by_model: dict[str, list[dict]] = {}
     for r in e1:
         by_model.setdefault(r["model_name"], []).append(r)

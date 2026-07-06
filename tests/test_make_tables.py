@@ -33,6 +33,7 @@ def _record(**overrides) -> dict:
         "seed": 0,
         "train_fraction": 1.0,
         "smoke": False,
+        "config_id": "cfg-a",
         "git_dirty_paths": [],
         "metrics": {"accuracy": 0.8, "macro_f1": 0.75, "positive_f1": 0.7, "weighted_f1_legacy": 0.78},
     }
@@ -72,6 +73,42 @@ def test_build_t1_excludes_non_e1_or_non_test_split_records():
     rows = module.build_t1_protocol_b_main(records)
     assert len(rows) == 1
     assert rows[0]["n_seeds"] == 1
+
+
+def test_build_t1_raises_on_mixed_config_ids_for_non_smoke_e1_records():
+    module = _load_make_tables_module()
+    records = [
+        _record(run_id="a", model_name="lstm", seed=0, config_id="cfg-a"),
+        _record(run_id="b", model_name="lstm", seed=1, config_id="cfg-b"),  # different config, same model
+    ]
+    with pytest.raises(module.MixedConfigError) as excinfo:
+        module.build_t1_protocol_b_main(records)
+    assert "lstm" in str(excinfo.value)
+    assert "cfg-a" in str(excinfo.value)
+    assert "cfg-b" in str(excinfo.value)
+
+
+def test_build_t1_succeeds_with_single_config_id_per_model():
+    module = _load_make_tables_module()
+    records = [
+        _record(run_id="a", model_name="lstm", seed=0, config_id="cfg-a"),
+        _record(run_id="b", model_name="lstm", seed=1, config_id="cfg-a"),
+        _record(run_id="c", model_name="gru", seed=0, config_id="cfg-x"),
+    ]
+    rows = module.build_t1_protocol_b_main(records)  # should not raise
+    by_model = {r["model"]: r for r in rows}
+    assert by_model["lstm"]["n_seeds"] == 2
+    assert by_model["gru"]["n_seeds"] == 1
+
+
+def test_build_t1_ignores_mixed_config_ids_among_smoke_records():
+    module = _load_make_tables_module()
+    records = [
+        _record(run_id="a", model_name="lstm", seed=0, config_id="cfg-a", smoke=True),
+        _record(run_id="b", model_name="lstm", seed=1, config_id="cfg-b", smoke=True),  # differs, but smoke-exempt
+    ]
+    rows = module.build_t1_protocol_b_main(records)  # should not raise
+    assert rows[0]["n_seeds"] == 2
 
 
 def test_build_t2_ranks_and_computes_rank_delta():
