@@ -37,6 +37,15 @@ REQUIRED_KEYS = {
     "metrics",
 }
 
+# Phase 2 (cross-dataset E4/E5) provenance fields. OPTIONAL: Phase-1
+# records predate them (dtc.harness.ledger.read_ledger backfills at read
+# time), so they are deliberately NOT in REQUIRED_KEYS. But a record that
+# carries ANY of them must carry both dataset links -- a training_id with
+# no train/eval datasets (or vice versa) is a malformed new-style record,
+# not an old one.
+PROVENANCE_KEYS = {"train_dataset", "eval_dataset", "training_id"}
+PROVENANCE_DATASET_KEYS = {"train_dataset", "eval_dataset"}
+
 
 def _read_jsonl(path: Path) -> list[dict]:
     if not path.exists():
@@ -55,6 +64,12 @@ def validate_record(record: dict) -> list[str]:
     missing = REQUIRED_KEYS - set(record.keys())
     if missing:
         return [f"missing required keys: {sorted(missing)}"]
+    if PROVENANCE_KEYS & set(record.keys()):
+        missing_provenance = PROVENANCE_DATASET_KEYS - set(record.keys())
+        if missing_provenance:
+            return [
+                f"record carries Phase-2 provenance fields but is missing: {sorted(missing_provenance)}"
+            ]
     return []
 
 

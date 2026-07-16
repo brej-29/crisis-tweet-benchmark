@@ -45,6 +45,25 @@ def test_validate_record_accepts_well_formed_record():
     assert module.validate_record(_valid_record("abc")) == []
 
 
+def test_validate_record_accepts_new_dataset_provenance_fields():
+    module = _load_merge_ledger_module()
+    record = _valid_record("abc") | {
+        "train_dataset": "crisislex",
+        "eval_dataset": "kaggle",
+        "training_id": "tid-1",
+    }
+    assert module.validate_record(record) == []
+
+
+def test_validate_record_rejects_partial_dataset_provenance_fields():
+    module = _load_merge_ledger_module()
+    # a record carrying training_id but neither dataset link is malformed
+    record = _valid_record("abc") | {"training_id": "tid-1"}
+    errors = module.validate_record(record)
+    assert errors
+    assert any("train_dataset" in e for e in errors)
+
+
 def test_merge_appends_new_valid_records(tmp_path):
     module = _load_merge_ledger_module()
     local_path = tmp_path / "local.jsonl"

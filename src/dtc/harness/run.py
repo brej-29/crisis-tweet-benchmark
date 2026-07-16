@@ -55,6 +55,9 @@ def build_run_record(
     smoke: bool = False,
     train_fraction: float = 1.0,
     config_id: str | None = None,
+    train_dataset: str | None = None,
+    eval_dataset: str | None = None,
+    training_id: str | None = None,
 ) -> dict:
     """`dataset_manifest_path`/`dataset_split_hashes`: for datasets with a
     prepared manifest (Protocol B's train/val/test), pass
@@ -64,6 +67,13 @@ def build_run_record(
     of Protocol A's own split) instead of pointing at Protocol B's manifest,
     which would misrepresent what data the run actually used. If neither is
     given, `dataset_split_hashes` is None (not silently backfilled).
+
+    `train_dataset`/`eval_dataset`/`training_id` (Phase 2, cross-dataset
+    E4/E5): optional provenance fields. `dataset` stays = the training
+    dataset; a training evaluated on two frozen tests emits TWO records
+    sharing one `training_id`, each with its own run_id and eval_dataset.
+    When None (old call sites), the fields are omitted entirely --
+    dtc.harness.ledger.read_ledger backfills them at read time.
     """
     manifest_path_str = None
     if dataset_manifest_path is not None:
@@ -73,7 +83,7 @@ def build_run_record(
             manifest_path_str = str(dataset_manifest_path)
         if dataset_split_hashes is None:
             dataset_split_hashes = _split_hashes(_load_dataset_manifest(dataset_manifest_path))
-    return {
+    record = {
         "run_id": run_id,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "git_commit": get_git_commit_hash(repo_root),
@@ -94,6 +104,13 @@ def build_run_record(
         "dataset_split_hashes": dataset_split_hashes,
         "metrics": metrics,
     }
+    if train_dataset is not None:
+        record["train_dataset"] = train_dataset
+    if eval_dataset is not None:
+        record["eval_dataset"] = eval_dataset
+    if training_id is not None:
+        record["training_id"] = training_id
+    return record
 
 
 def save_predictions(
@@ -146,6 +163,9 @@ def log_evaluation_run(
     smoke: bool = False,
     train_fraction: float = 1.0,
     config_id: str | None = None,
+    train_dataset: str | None = None,
+    eval_dataset: str | None = None,
+    training_id: str | None = None,
 ) -> dict:
     """Compute metrics, save per-example predictions, and append one ledger line.
 
@@ -179,6 +199,9 @@ def log_evaluation_run(
         smoke=smoke,
         train_fraction=train_fraction,
         config_id=config_id,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        training_id=training_id,
     )
     append_run_record(ledger_path, record)
     return record

@@ -195,6 +195,72 @@ def test_build_run_record_with_neither_manifest_nor_hashes_leaves_hashes_none():
     assert record["dataset_split_hashes"] is None
 
 
+def test_build_run_record_includes_dataset_provenance_fields_when_provided():
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    record = build_run_record(
+        run_id="cross-eval-run",
+        repo_root=repo_root,
+        model_name="tfidf_mnb",
+        dataset="crisislex",
+        split="test",
+        seed=0,
+        config={"alpha": 1.0},
+        metrics={"accuracy": 0.5},
+        train_dataset="crisislex",
+        eval_dataset="kaggle",
+        training_id="tid-123",
+    )
+    assert record["dataset"] == "crisislex"  # stays = the training dataset
+    assert record["train_dataset"] == "crisislex"
+    assert record["eval_dataset"] == "kaggle"
+    assert record["training_id"] == "tid-123"
+
+
+def test_build_run_record_omits_dataset_provenance_fields_by_default():
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    record = build_run_record(
+        run_id="legacy-style-run",
+        repo_root=repo_root,
+        model_name="tfidf_mnb",
+        dataset="kaggle",
+        split="val",
+        seed=0,
+        config={},
+        metrics={"accuracy": 0.5},
+    )
+    # backward compat: old call sites emit records byte-identical in shape
+    assert "train_dataset" not in record
+    assert "eval_dataset" not in record
+    assert "training_id" not in record
+
+
+def test_read_ledger_backfills_train_and_eval_dataset_in_memory_only(tmp_path):
+    ledger_path = tmp_path / "ledger.jsonl"
+    append_run_record(ledger_path, {"run_id": "old-1", "dataset": "kaggle"})
+    append_run_record(ledger_path, {"run_id": "old-2"})  # no dataset field at all
+    append_run_record(
+        ledger_path,
+        {"run_id": "new-1", "dataset": "crisislex", "train_dataset": "crisislex", "eval_dataset": "kaggle"},
+    )
+    before_bytes = ledger_path.read_bytes()
+
+    records = read_ledger(ledger_path)
+    by_id = {r["run_id"]: r for r in records}
+    assert by_id["old-1"]["train_dataset"] == "kaggle"
+    assert by_id["old-1"]["eval_dataset"] == "kaggle"
+    assert by_id["old-2"]["train_dataset"] == "kaggle"  # no dataset -> default "kaggle"
+    assert by_id["old-2"]["eval_dataset"] == "kaggle"
+    # records that already carry the fields keep their values
+    assert by_id["new-1"]["train_dataset"] == "crisislex"
+    assert by_id["new-1"]["eval_dataset"] == "kaggle"
+    # backfill is read-time only: the file bytes are untouched
+    assert ledger_path.read_bytes() == before_bytes
+
+
 def test_compute_config_id_is_deterministic_and_key_order_independent():
     c1 = {"a": 1, "b": 2}
     c2 = {"b": 2, "a": 1}

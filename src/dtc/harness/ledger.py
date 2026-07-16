@@ -84,6 +84,21 @@ def append_run_record(ledger_path: str | Path, record: dict) -> None:
         f.write(line + "\n")
 
 
+def _backfill_dataset_fields(record: dict) -> dict:
+    """Read-time-only backfill of Phase 2's `train_dataset`/`eval_dataset`
+    fields on records written before they existed. Phase-1 records all
+    trained AND evaluated on the record's own `dataset` (kaggle), so both
+    default to it. This never touches the file -- the ledger is append-only,
+    and old lines are never rewritten (docs/DECISIONS.md).
+    """
+    default = record.get("dataset") or "kaggle"
+    if "train_dataset" not in record:
+        record["train_dataset"] = default
+    if "eval_dataset" not in record:
+        record["eval_dataset"] = default
+    return record
+
+
 def read_ledger(ledger_path: str | Path) -> list[dict]:
     ledger_path = Path(ledger_path)
     if not ledger_path.exists():
@@ -93,5 +108,5 @@ def read_ledger(ledger_path: str | Path) -> list[dict]:
         for line in f:
             line = line.strip()
             if line:
-                records.append(json.loads(line))
+                records.append(_backfill_dataset_fields(json.loads(line)))
     return records
