@@ -90,6 +90,17 @@ def build_run_specs(
         if only is not None and exp_key not in only:
             continue
         exp = experiments[exp_key]
+        eval_datasets = list(exp.get("eval_datasets") or [exp["dataset"]])
+        if len(eval_datasets) > 1 and (exp["protocol"] == "A" or exp["stage"] == "tuning"):
+            # Only Protocol B non-tuning stages loop over eval datasets in
+            # execute_run; the Protocol A / tuning branches always emit
+            # exactly one record, so extra eval datasets would be silently
+            # marked ledgered without ever being evaluated.
+            raise ValueError(
+                f"experiment '{exp_key}': eval_datasets={eval_datasets} is only supported "
+                "for protocol-B non-tuning stages (protocol-A and tuning runs evaluate on "
+                "a single dataset and emit exactly one ledger record per training)."
+            )
         models = [m for m in exp["models"] if models_filter is None or m in models_filter]
         seeds = [s for s in exp["seeds"] if seeds_filter is None or s in seeds_filter]
         fractions = exp.get("train_fractions", [exp.get("train_fraction", 1.0)])
@@ -112,7 +123,7 @@ def build_run_specs(
                                 # one spec per TRAINING run: E4/E5 evaluate the
                                 # same in-memory model on several frozen tests
                                 "train_dataset": exp["dataset"],
-                                "eval_datasets": list(exp.get("eval_datasets") or [exp["dataset"]]),
+                                "eval_datasets": list(eval_datasets),
                                 "model_name": model_name,
                                 "config_source": config_source,
                                 "grid_index": grid_index if config_source == "tuning" else None,

@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +85,25 @@ def test_build_run_specs_keeps_one_spec_per_training_for_multi_eval():
     assert len(specs) == 4
     assert all(s["train_dataset"] == "crisislex" for s in specs)
     assert all(s["eval_datasets"] == ["crisislex", "kaggle"] for s in specs)
+
+
+def test_build_run_specs_rejects_multi_eval_on_protocol_a_or_tuning():
+    # execute_run's protocol-A/tuning branches emit exactly ONE record per
+    # training; declaring several eval datasets there would silently mark
+    # never-evaluated eval keys as ledgered, so enumeration must refuse.
+    module = _load_run_matrix_module()
+    base = {
+        "dataset": "kaggle",
+        "eval_datasets": ["kaggle", "crisislex"],
+        "models": ["tfidf_mnb"],
+        "config_source": "final",
+        "seeds": [0],
+        "train_fraction": 1.0,
+    }
+    with pytest.raises(ValueError, match="eval_datasets"):
+        module.build_run_specs({"e2x": {**base, "stage": "E2", "protocol": "A"}})
+    with pytest.raises(ValueError, match="eval_datasets"):
+        module.build_run_specs({"tuningx": {**base, "stage": "tuning", "protocol": "B"}})
 
 
 def test_build_run_specs_respects_only_filter():
