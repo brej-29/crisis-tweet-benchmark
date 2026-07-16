@@ -241,14 +241,20 @@ def test_dry_run_enumerates_full_matrix_including_tuning():
     assert stages == {"tuning", "E1", "E2", "E3"}
 
 
-def _build_tiny_dataset_fixture(tmp_path: Path, dataset: str, id_col: str, label_col: str, n: int = 40) -> None:
+def _build_tiny_dataset_fixture(
+    tmp_path: Path, dataset: str, id_col: str, label_col: str, n: int = 40, with_event: bool = False
+) -> None:
     dataset_dir = tmp_path / "data" / dataset
     dataset_dir.mkdir(parents=True)
+    events = ["2013_Oklahoma_Tornado", "2013_Queensland_Floods"]
     rows = []
     for i in range(n):
         label = i % 2
         text = "fire flood disaster" if label == 1 else "nice sunny day today"
-        rows.append({id_col: i, "text": text, label_col: label})
+        row = {id_col: i, "text": text, label_col: label}
+        if with_event:
+            row["event"] = events[i % len(events)]
+        rows.append(row)
     df = pd.DataFrame(rows)
     train_df, val_df, test_df = df.iloc[:24], df.iloc[24:32], df.iloc[32:]
     train_df.to_csv(dataset_dir / "train.csv", index=False)
@@ -270,8 +276,8 @@ def _build_tiny_kaggle_fixture(tmp_path: Path, n: int = 40) -> None:
     _build_tiny_dataset_fixture(tmp_path, "kaggle", id_col="id", label_col="target", n=n)
 
 
-def _build_tiny_crisislex_fixture(tmp_path: Path, n: int = 40) -> None:
-    _build_tiny_dataset_fixture(tmp_path, "crisislex", id_col="tweet_id", label_col="label", n=n)
+def _build_tiny_crisislex_fixture(tmp_path: Path, n: int = 40, with_event: bool = False) -> None:
+    _build_tiny_dataset_fixture(tmp_path, "crisislex", id_col="tweet_id", label_col="label", n=n, with_event=with_event)
 
 
 def test_end_to_end_dry_run_and_resume_skip_against_tiny_fixture(tmp_path):
@@ -328,11 +334,11 @@ def test_end_to_end_dry_run_and_resume_skip_against_tiny_fixture(tmp_path):
     assert ledger_records_after[0]["training_id"]
 
 
-def _setup_dual_eval_experiment(tmp_path: Path) -> Path:
+def _setup_dual_eval_experiment(tmp_path: Path, crisislex_with_event: bool = False) -> Path:
     """Tiny kaggle + crisislex fixtures and an E4-shaped experiments.yaml:
     train on crisislex, evaluate on both frozen tests."""
     _build_tiny_kaggle_fixture(tmp_path)
-    _build_tiny_crisislex_fixture(tmp_path)
+    _build_tiny_crisislex_fixture(tmp_path, with_event=crisislex_with_event)
     configs_dir = tmp_path / "configs" / "final"
     configs_dir.mkdir(parents=True)
     (configs_dir / "tfidf_mnb.yaml").write_text(yaml.safe_dump({"alpha": 1.0}), encoding="utf-8")
@@ -384,6 +390,36 @@ def test_dual_eval_training_emits_two_records_sharing_training_id(tmp_path):
     second_results = module.main(experiments_config_path=experiments_path, repo_root=tmp_path, dry_run=False)
     assert second_results[0]["skipped"] is True
     assert len(read_ledger(tmp_path / "results" / "ledger.jsonl")) == 2
+
+
+def test_dual_eval_predictions_csv_carries_event_only_for_crisislex(tmp_path):
+    """Task A2 requirement 3: crisislex's `event` column must reach
+    predictions.csv end-to-end through the real driver (evaluate_model_on_
+    frozen_test -> **eval_fields -> log_evaluation_run -> save_predictions),
+    while the kaggle eval record for the SAME training stays event-free.
+    """
+    module = _load_run_matrix_module()
+    experiments_path = _setup_dual_eval_experiment(tmp_path, crisislex_with_event=True)
+
+    results = module.main(experiments_config_path=experiments_path, repo_root=tmp_path, dry_run=False)
+    assert len(results) == 1
+
+    from dtc.harness.ledger import read_ledger
+
+    records = read_ledger(tmp_path / "results" / "ledger.jsonl")
+    assert len(records) == 2
+    by_eval_dataset = {r["eval_dataset"]: r for r in records}
+
+    crisislex_predictions = pd.read_csv(
+        tmp_path / "results" / "runs" / by_eval_dataset["crisislex"]["run_id"] / "predictions.csv"
+    )
+    assert "event" in crisislex_predictions.columns
+    assert set(crisislex_predictions["event"]) <= {"2013_Oklahoma_Tornado", "2013_Queensland_Floods"}
+
+    kaggle_predictions = pd.read_csv(
+        tmp_path / "results" / "runs" / by_eval_dataset["kaggle"]["run_id"] / "predictions.csv"
+    )
+    assert "event" not in kaggle_predictions.columns
 
 
 def test_partial_dual_eval_training_retrains_and_fills_only_missing_record(tmp_path):

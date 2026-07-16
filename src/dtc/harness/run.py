@@ -14,6 +14,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Sequence
 
 import pandas as pd
 
@@ -122,7 +123,14 @@ def save_predictions(
     y_true,
     y_pred,
     y_prob=None,
+    extra_columns: dict[str, Sequence] | None = None,
 ) -> Path:
+    """`extra_columns` (Phase 2 Task A2): optional dataset-specific passthrough
+    columns appended to the predictions frame as-is (e.g. CrisisLex's `event`,
+    needed for the per-event table T6) -- absent for datasets with nothing
+    extra to carry, so kaggle predictions.csv stays exactly id/text_sha256/
+    y_true/y_pred/y_prob.
+    """
     run_dir = Path(results_dir) / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     text_hashes = [hashlib.sha256(str(t).encode("utf-8")).hexdigest() for t in texts]
@@ -135,6 +143,9 @@ def save_predictions(
             "y_prob": list(y_prob) if y_prob is not None else [None] * len(list(ids)),
         }
     )
+    if extra_columns:
+        for col_name, values in extra_columns.items():
+            df[col_name] = list(values)
     out_path = run_dir / "predictions.csv"
     df.to_csv(out_path, index=False, lineterminator="\n")
     return out_path
@@ -155,6 +166,7 @@ def log_evaluation_run(
     y_true,
     y_pred,
     y_prob=None,
+    extra_columns: dict[str, Sequence] | None = None,
     dataset_manifest_path: str | Path | None = None,
     dataset_split_hashes: dict | None = None,
     protocol: str | None = None,
@@ -169,6 +181,10 @@ def log_evaluation_run(
 ) -> dict:
     """Compute metrics, save per-example predictions, and append one ledger line.
 
+    `extra_columns`: forwarded as-is to `save_predictions` (see its
+    docstring) -- never touches the ledger record/metrics, only
+    predictions.csv.
+
     Returns the run record that was appended.
     """
     run_id = generate_run_id()
@@ -181,6 +197,7 @@ def log_evaluation_run(
         y_true=y_true,
         y_pred=y_pred,
         y_prob=y_prob,
+        extra_columns=extra_columns,
     )
     record = build_run_record(
         run_id=run_id,

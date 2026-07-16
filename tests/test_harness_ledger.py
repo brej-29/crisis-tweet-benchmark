@@ -14,7 +14,7 @@ from dtc.harness.ledger import (
     get_git_commit_hash,
     read_ledger,
 )
-from dtc.harness.run import build_run_record, save_predictions
+from dtc.harness.run import build_run_record, log_evaluation_run, save_predictions
 
 REPO_ROOT_FOR_GIT_TEST = __file__  # any path inside the repo works for `git rev-parse`
 
@@ -303,3 +303,63 @@ def test_save_predictions_writes_expected_columns(tmp_path):
     # text hashes should be deterministic sha256 hex digests, not raw text
     assert df["text_sha256"].iloc[0] != "a"
     assert len(df["text_sha256"].iloc[0]) == 64
+
+
+def test_save_predictions_appends_extra_columns_when_given(tmp_path):
+    path = save_predictions(
+        run_id="run-event",
+        results_dir=tmp_path,
+        ids=[1, 2, 3],
+        texts=["a", "b", "c"],
+        y_true=[0, 1, 0],
+        y_pred=[0, 1, 1],
+        y_prob=[0.1, 0.9, 0.6],
+        extra_columns={"event": ["Flood", "Tornado", "Flood"]},
+    )
+    df = pd.read_csv(path)
+    assert list(df.columns) == ["id", "text_sha256", "y_true", "y_pred", "y_prob", "event"]
+    assert df["event"].tolist() == ["Flood", "Tornado", "Flood"]
+
+
+def test_save_predictions_without_extra_columns_unaffected(tmp_path):
+    # explicit None (the log_evaluation_run default) behaves identically to
+    # simply omitting the argument -- no stray column, no crash.
+    path = save_predictions(
+        run_id="run-no-event",
+        results_dir=tmp_path,
+        ids=[1],
+        texts=["a"],
+        y_true=[0],
+        y_pred=[0],
+        y_prob=[0.1],
+        extra_columns=None,
+    )
+    df = pd.read_csv(path)
+    assert list(df.columns) == ["id", "text_sha256", "y_true", "y_pred", "y_prob"]
+
+
+def test_log_evaluation_run_writes_extra_columns_into_predictions_csv(tmp_path):
+    ledger_path = tmp_path / "ledger.jsonl"
+    record = log_evaluation_run(
+        repo_root=tmp_path,
+        ledger_path=ledger_path,
+        results_dir=tmp_path / "results",
+        model_name="tfidf_mnb",
+        dataset="crisislex",
+        split="test",
+        seed=0,
+        config={"alpha": 1.0},
+        ids=[1, 2],
+        texts=["flood warning", "nice day"],
+        y_true=[1, 0],
+        y_pred=[1, 0],
+        y_prob=[0.9, 0.1],
+        extra_columns={"event": ["2013_Oklahoma_Tornado", "2013_Queensland_Floods"]},
+    )
+    predictions_path = tmp_path / "results" / "runs" / record["run_id"] / "predictions.csv"
+    df = pd.read_csv(predictions_path)
+    assert "event" in df.columns
+    assert df["event"].tolist() == ["2013_Oklahoma_Tornado", "2013_Queensland_Floods"]
+    # extra_columns never touches the ledger record itself
+    assert "event" not in record
+    assert "extra_columns" not in record

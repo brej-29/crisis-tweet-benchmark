@@ -320,6 +320,11 @@ def execute_run(
     else:
         records = []
         for eval_ds in pending_eval_datasets:
+            # eval_fields carries ids/texts/y_true/y_pred/y_prob plus, when the
+            # eval dataset has passthrough columns (CrisisLex's `event`), an
+            # optional "extra_columns" key -- **eval_fields routes that key
+            # straight into log_evaluation_run's extra_columns param, so no
+            # per-dataset special-casing is needed here (docs/DECISIONS.md).
             eval_fields = evaluate_model_on_frozen_test(model, repo_root, eval_ds)
             manifest_path = repo_root / "data" / eval_ds / "manifest.json"
             records.append(
