@@ -16,7 +16,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from dtc.data.text import clean_series
-from dtc.data.use_cache import load_embeddings
+from dtc.data.use_cache import load_embeddings, load_embeddings_multi
 from dtc.models.base import BaseModel, register_model
 from dtc.models.torch_common import fit_with_early_stopping, get_device, set_seed
 
@@ -39,6 +39,15 @@ class _UseMlp(nn.Module):
 
 @register_model("use_frozen")
 class UseFrozenModel(BaseModel):
+    def __init__(self):
+        # Extra cache dirs searched at predict time AFTER the primary
+        # (train-dataset) cache -- set by the driver post-fit for
+        # cross-dataset eval (Phase 2 E4/E5), where eval texts live in the
+        # EVAL dataset's cache. Deliberately a plain attribute, NOT part of
+        # `config`: config_id must stay identical to the single-dataset
+        # case (E5's use_frozen config_id == E1's). See docs/DECISIONS.md.
+        self.extra_cache_dirs: list = []
+
     def fit(self, train_df, val_df, config, seed):
         set_seed(seed)
         cache_dir = config["use_cache_dir"]  # no default: caller must point at a real precomputed cache
@@ -85,7 +94,7 @@ class UseFrozenModel(BaseModel):
 
     def predict_proba(self, texts):
         cleaned = clean_series(texts)
-        X = load_embeddings(self.cache_dir, cleaned).astype(np.float32)
+        X = load_embeddings_multi([self.cache_dir, *self.extra_cache_dirs], cleaned).astype(np.float32)
         self.module.eval()
         with torch.no_grad():
             logits = self.module(torch.from_numpy(X).to(self.device))

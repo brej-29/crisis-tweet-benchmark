@@ -37,6 +37,27 @@ def load_embeddings(cache_dir: str | Path, texts: Sequence[str]) -> np.ndarray:
     return np.stack([load_embedding(cache_dir, t) for t in texts])
 
 
+def load_embedding_multi(cache_dirs: Sequence[str | Path], text: str) -> np.ndarray:
+    """Looks the text up in each cache dir in order (first hit wins).
+    Cross-dataset evaluation (Phase 2 E4/E5) predicts on texts cached under
+    the EVAL dataset's dir, not the train dataset's -- callers pass the
+    train cache first, then the extra eval caches.
+    """
+    for cache_dir in cache_dirs:
+        path = embedding_path(cache_dir, text)
+        if path.exists():
+            return np.load(path)
+    dirs = ", ".join(str(d) for d in cache_dirs)
+    raise KeyError(
+        f"No cached USE embedding for text hash {text_sha256(text)} in any of [{dirs}]; "
+        "run scripts/precompute_use.py for the missing dataset/split first."
+    )
+
+
+def load_embeddings_multi(cache_dirs: Sequence[str | Path], texts: Sequence[str]) -> np.ndarray:
+    return np.stack([load_embedding_multi(cache_dirs, t) for t in texts])
+
+
 def save_embedding(cache_dir: str | Path, text: str, vector: np.ndarray) -> Path:
     path = embedding_path(cache_dir, text)
     path.parent.mkdir(parents=True, exist_ok=True)

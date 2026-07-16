@@ -103,6 +103,59 @@ def test_use_frozen_raises_key_error_for_uncached_text(tmp_path, tiny_train_val)
         model.fit(train_df, val_df, config={"use_cache_dir": tmp_path, "max_epochs": 1}, seed=0)
 
 
+def test_load_embeddings_multi_falls_back_to_extra_dirs(tmp_path):
+    from dtc.data.use_cache import load_embeddings_multi, save_embedding
+
+    primary = tmp_path / "primary"
+    extra = tmp_path / "extra"
+    save_embedding(primary, "in primary", np.full(512, 1.0, dtype=np.float32))
+    save_embedding(extra, "in extra only", np.full(512, 2.0, dtype=np.float32))
+
+    X = load_embeddings_multi([primary, extra], ["in primary", "in extra only"])
+    assert X.shape == (2, 512)
+    assert X[0, 0] == 1.0  # primary dir wins for texts it has
+    assert X[1, 0] == 2.0  # miss in primary -> hit in extra dir
+
+
+def test_load_embeddings_multi_key_error_names_all_dirs_searched(tmp_path):
+    from dtc.data.use_cache import load_embeddings_multi
+
+    primary = tmp_path / "primary"
+    extra = tmp_path / "extra"
+    with pytest.raises(KeyError) as excinfo:
+        load_embeddings_multi([primary, extra], ["never cached"])
+    # str(KeyError) reprs the message (escaping Windows backslashes), so
+    # check the raw message via args[0]
+    message = excinfo.value.args[0]
+    assert str(primary) in message
+    assert str(extra) in message
+
+
+def test_use_frozen_predict_uses_extra_cache_dirs_for_cross_dataset_eval(tmp_path, tiny_train_val):
+    from dtc.data.use_cache import save_embedding
+
+    train_df, val_df = tiny_train_val
+    primary = tmp_path / "train_cache"
+    extra = tmp_path / "eval_cache"
+    rng = np.random.RandomState(0)
+    for text in pd.concat([train_df["text"], val_df["text"]]).unique():
+        save_embedding(primary, text, rng.rand(512).astype(np.float32))
+    # cross-dataset eval texts live only in the OTHER dataset's cache
+    cross_texts = ["fire flood storm explosion earthquake fire"]
+    for text in cross_texts:
+        save_embedding(extra, text, rng.rand(512).astype(np.float32))
+
+    model = build_model("use_frozen")
+    config = {"use_cache_dir": primary, "max_epochs": 2, "patience": 2, "hidden_size": 8}
+    model.fit(train_df, val_df, config=config, seed=0)
+    assert model.extra_cache_dirs == []  # default: primary-only, as before
+
+    model.extra_cache_dirs = [extra]  # set by the driver AFTER fit, not via config
+    probs = model.predict_proba(pd.Series(cross_texts))
+    assert probs.shape == (1,)
+    assert np.all((probs >= 0) & (probs <= 1))
+
+
 @pytest.mark.slow
 def test_distilbert_finetune_fit_and_predict(tiny_train_val):
     train_df, val_df = tiny_train_val
