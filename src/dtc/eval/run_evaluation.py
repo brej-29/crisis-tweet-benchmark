@@ -28,8 +28,10 @@ def load_frozen_test_standardized(repo_root: str | Path, dataset: str) -> pd.Dat
 def evaluate_model_on_frozen_test(model, repo_root: str | Path, dataset: str) -> dict:
     """Runs `model.predict_proba` on the frozen test split and returns the
     fields dtc.harness.run.log_evaluation_run needs (ids/texts/y_true/
-    y_pred/y_prob). Evaluated ONCE per run -- callers must not call this
-    more than once per trained model instance for a given experiment run.
+    y_pred/y_prob). Evaluated ONCE per (run, dataset) -- callers must not
+    call this more than once per trained model instance for a given
+    experiment run and eval dataset (cross-dataset E4/E5 call it once per
+    frozen test, which is one ledgered eval record each).
     """
     test_df = load_frozen_test_standardized(repo_root, dataset)
     y_prob = model.predict_proba(test_df["text"])

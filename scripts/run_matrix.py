@@ -1,13 +1,20 @@
 """Resumable, config-driven experiment matrix runner (docs/PLAN.md Task 6).
 
-Reads configs/experiments.yaml (E1/E2/E3, declaratively), expands it into
-individual runs (stage, protocol, model, seed, train_fraction), skips
-anything already present in the ledger as a run with a matching (stage,
-protocol, model_name, config_id, seed, train_fraction, smoke) key, and
-executes the rest sequentially -- ledgering each immediately on
-completion. A killed run leaves no partial ledger line, since
-dtc.harness.run.log_evaluation_run only appends after metrics are
-computed (Hard Rule: crash-safe by construction, not by a lock file).
+Reads configs/experiments.yaml (E1-E5, declaratively), expands it into
+individual TRAINING runs (stage, protocol, model, seed, train_fraction),
+skips any eval already present in the ledger as a run with a matching
+(stage, protocol, model_name, config_id, seed, train_fraction, smoke,
+train_dataset, eval_dataset) key, and executes the rest sequentially --
+ledgering each immediately on completion. A killed run leaves no partial
+ledger line, since dtc.harness.run.log_evaluation_run only appends after
+metrics are computed (Hard Rule: crash-safe by construction, not by a
+lock file).
+
+Phase 2 cross-dataset experiments (E4/E5) declare `eval_datasets: [a, b]`:
+ONE training per spec, evaluated on BOTH frozen tests with the in-memory
+model (no persistence/reload), emitting one ledger record per eval_dataset
+sharing a training_id. A training is pending if ANY of its per-eval keys
+is missing; execution fills only the missing eval records.
 
 Usage:
     uv run python scripts/run_matrix.py --dry-run
@@ -18,6 +25,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import uuid
 from pathlib import Path
 
 import pandas as pd
@@ -101,6 +109,10 @@ def build_run_specs(
                                 "stage": exp["stage"],
                                 "protocol": exp["protocol"],
                                 "dataset": exp["dataset"],
+                                # one spec per TRAINING run: E4/E5 evaluate the
+                                # same in-memory model on several frozen tests
+                                "train_dataset": exp["dataset"],
+                                "eval_datasets": list(exp.get("eval_datasets") or [exp["dataset"]]),
                                 "model_name": model_name,
                                 "config_source": config_source,
                                 "grid_index": grid_index if config_source == "tuning" else None,
@@ -113,8 +125,22 @@ def build_run_specs(
     return specs
 
 
-def _skip_key(spec: dict, config_id: str, smoke: bool) -> tuple:
-    return (spec["stage"], spec["protocol"], spec["model_name"], config_id, spec["seed"], spec["train_fraction"], smoke)
+def _skip_key(spec: dict, config_id: str, smoke: bool, eval_dataset: str) -> tuple:
+    # One key per EVAL record (not per training): E4/E5 emit several records
+    # per training, and each is skipped/pending independently. Old (Phase 1)
+    # ledger records match via read_ledger's read-time backfill of
+    # train_dataset/eval_dataset -> "kaggle".
+    return (
+        spec["stage"],
+        spec["protocol"],
+        spec["model_name"],
+        config_id,
+        spec["seed"],
+        spec["train_fraction"],
+        smoke,
+        spec["train_dataset"],
+        eval_dataset,
+    )
 
 
 def _already_ledgered_keys(ledger_records: list[dict]) -> set[tuple]:
@@ -129,6 +155,8 @@ def _already_ledgered_keys(ledger_records: list[dict]) -> set[tuple]:
                 r.get("seed"),
                 r.get("train_fraction"),
                 r.get("smoke"),
+                r.get("train_dataset"),
+                r.get("eval_dataset"),
             )
         )
     return keys
@@ -178,8 +206,22 @@ def resolve_config(spec: dict, repo_root: Path, train_texts) -> dict:
     return config
 
 
-def execute_run(spec: dict, repo_root: Path, *, smoke: bool, smoke_n: int) -> dict:
+def execute_run(
+    spec: dict, repo_root: Path, *, smoke: bool, smoke_n: int, pending_eval_datasets: list[str] | None = None
+) -> list[dict]:
+    """Trains once and returns the list of ledger records emitted (one per
+    eval dataset; single-element for tuning/Protocol A/single-eval specs).
+
+    `pending_eval_datasets`: which of spec["eval_datasets"] still need a
+    record (default: all of them). On resume after a crash between two
+    evals, the training is redone and ONLY the gap is filled -- the two
+    records then carry different training_ids (provenance only, see
+    docs/DECISIONS.md).
+    """
     dataset = spec["dataset"]
+    train_dataset = spec["train_dataset"]
+    if pending_eval_datasets is None:
+        pending_eval_datasets = list(spec["eval_datasets"])
     protocol = spec["protocol"]
     seed = spec["seed"]
 
@@ -201,6 +243,15 @@ def execute_run(spec: dict, repo_root: Path, *, smoke: bool, smoke_n: int) -> di
     model = build_model(spec["model_name"])
     model.fit(train_df, eval_df, config=config, seed=seed)
 
+    # Cross-dataset eval (E4/E5): use_frozen's predict-time embedding lookups
+    # must also see the OTHER dataset's cache. Set post-fit as a plain
+    # attribute, never via config -- config_id must stay identical to the
+    # single-dataset case (docs/DECISIONS.md).
+    if spec["model_name"] == "use_frozen" and len(spec["eval_datasets"]) > 1:
+        model.extra_cache_dirs = [
+            repo_root / "data" / ds / "use_embeddings" for ds in spec["eval_datasets"] if ds != train_dataset
+        ]
+
     common_kwargs = dict(
         repo_root=repo_root,
         ledger_path=repo_root / "results" / "ledger.jsonl",
@@ -215,6 +266,8 @@ def execute_run(spec: dict, repo_root: Path, *, smoke: bool, smoke_n: int) -> di
         smoke=smoke,
         train_fraction=spec["train_fraction"],
         config_id=config_id,
+        train_dataset=train_dataset,
+        training_id=uuid.uuid4().hex,  # one per TRAINING; shared by all its eval records
     )
 
     if protocol == "A":
@@ -227,6 +280,7 @@ def execute_run(spec: dict, repo_root: Path, *, smoke: bool, smoke_n: int) -> di
         record = log_evaluation_run(
             **common_kwargs,
             split="protocol_a_eval",
+            eval_dataset=dataset,
             ids=eval_df["id"],
             texts=eval_df["text"],
             y_true=eval_df["label"].to_numpy(),
@@ -244,6 +298,7 @@ def execute_run(spec: dict, repo_root: Path, *, smoke: bool, smoke_n: int) -> di
         record = log_evaluation_run(
             **common_kwargs,
             split="val",
+            eval_dataset=dataset,
             ids=eval_df["id"],
             texts=eval_df["text"],
             y_true=eval_df["label"].to_numpy(),
@@ -252,16 +307,22 @@ def execute_run(spec: dict, repo_root: Path, *, smoke: bool, smoke_n: int) -> di
             dataset_manifest_path=manifest_path,
         )
     else:
-        eval_fields = evaluate_model_on_frozen_test(model, repo_root, dataset)
-        manifest_path = repo_root / "data" / dataset / "manifest.json"
-        record = log_evaluation_run(
-            **common_kwargs,
-            split="test",
-            dataset_manifest_path=manifest_path,
-            **eval_fields,
-        )
+        records = []
+        for eval_ds in pending_eval_datasets:
+            eval_fields = evaluate_model_on_frozen_test(model, repo_root, eval_ds)
+            manifest_path = repo_root / "data" / eval_ds / "manifest.json"
+            records.append(
+                log_evaluation_run(
+                    **common_kwargs,
+                    split="test",
+                    eval_dataset=eval_ds,
+                    dataset_manifest_path=manifest_path,
+                    **eval_fields,
+                )
+            )
+        return records
 
-    return record
+    return [record]
 
 
 def main(
@@ -300,10 +361,13 @@ def main(
 
         config = resolve_config(spec, repo_root, train_texts)
         config_id = compute_config_id(config)
-        key = _skip_key(spec, config_id, smoke)
+        per_eval_keys = {ds: _skip_key(spec, config_id, smoke, ds) for ds in spec["eval_datasets"]}
 
-        pending = key not in ledgered_keys
-        entry = {**spec, "config_id": config_id, "would_run": pending}
+        # A training is pending if ANY of its per-eval records is missing;
+        # execution then trains once and emits ONLY the missing records.
+        pending_evals = [ds for ds in spec["eval_datasets"] if per_eval_keys[ds] not in ledgered_keys]
+        pending = bool(pending_evals)
+        entry = {**spec, "config_id": config_id, "would_run": pending, "pending_eval_datasets": pending_evals}
 
         if dry_run:
             results.append(entry)
@@ -313,9 +377,18 @@ def main(
             results.append({**entry, "skipped": True})
             continue
 
-        record = execute_run(spec, repo_root, smoke=smoke, smoke_n=smoke_n)
-        ledgered_keys.add(key)
-        results.append({**entry, "skipped": False, "run_id": record["run_id"], "metrics": record["metrics"]})
+        records = execute_run(spec, repo_root, smoke=smoke, smoke_n=smoke_n, pending_eval_datasets=pending_evals)
+        for ds in pending_evals:
+            ledgered_keys.add(per_eval_keys[ds])
+        results.append(
+            {
+                **entry,
+                "skipped": False,
+                "run_id": records[-1]["run_id"],
+                "run_ids": [r["run_id"] for r in records],
+                "metrics": records[-1]["metrics"],
+            }
+        )
 
     return results
 
@@ -331,10 +404,14 @@ def _print_dry_run_summary(results: list[dict]) -> None:
         total_pending += len(pending)
         print(f"{exp_key}: {len(pending)} pending / {len(rows)} total")
         for r in pending:
-            print(
+            line = (
                 f"  [{r['stage']}] {r['model_name']} seed={r['seed']} "
                 f"fraction={r['train_fraction']} config_id={r['config_id']}"
             )
+            if len(r["eval_datasets"]) > 1:
+                # dual-eval spec: show which of its eval records are missing
+                line += f" pending_evals={','.join(r['pending_eval_datasets'])}"
+            print(line)
     print(f"\nTotal pending runs: {total_pending} / {len(results)}")
 
 
