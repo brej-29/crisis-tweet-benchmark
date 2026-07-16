@@ -44,6 +44,38 @@ instead uses the **95th percentile** of token counts, computed on the
   module handles its own internal tokenization and has no user-facing
   `max_length` knob, so no truncation length applies to it.
 
+### CrisisLex (Phase 2)
+
+Phase 2's E4 trains on CrisisLex (`docs/PLAN.md`/Task A4), reusing this same
+95th-percentile, train-only policy — no separate protocol, just a second
+dataset the policy is measured on. Both from-scratch token-based models and
+DistilBERT compute their own `max_length` at fit time from the **CrisisLex
+TRAIN split only** (Hard Rule 3), exactly as they do for Kaggle; these
+values are **not** pinned in `configs/final/*.yaml` (those configs are
+Kaggle-tuned and reused as-is per Task A4 — no CrisisLex tuning), so they
+are recorded here for reference rather than as a config knob.
+
+- **Measured value (whitespace tokens, CrisisLex train split, n=44,220 rows,
+  post-cleaning)**: 95th percentile = 24 (mean 14.79, median 15, max 43).
+  Coincidentally identical to Kaggle's whitespace p95 (24) despite the very
+  different corpus size and max — CrisisLex's longer tail (max 43 vs. 31) is
+  absorbed by the percentile.
+- **Measured value (DistilBERT WordPiece tokens, CrisisLex train split,
+  n=44,220 rows, post-cleaning, `distilbert-base-uncased` tokenizer)**: 95th
+  percentile = 45 (mean 27.34, median 28, max 96).
+- For completeness (not previously recorded anywhere — `max_length` is
+  computed at fit time, not ledgered, confirmed by inspecting an E1
+  `distilbert_finetune` ledger record's `config` snapshot, which contains
+  only `dropout`/`lr`): **Kaggle's DistilBERT WordPiece 95th percentile**,
+  measured now the same way on the Kaggle train split (n=5,988) = 51 (mean
+  31.13, median 31, max 80) — clearly labeled measured-now, not something
+  that ran at fit time for any already-ledgered E1 run. Kaggle's WordPiece
+  p95 (51) is notably higher than CrisisLex's (45) despite the two datasets
+  having a near-identical whitespace p95 (24 vs. 24); the likely mechanism
+  is a difference in how heavily each corpus's text (URLs, hashtags,
+  usernames) subword-fragments under WordPiece, but this is a hedge, not a
+  confirmed cause — not otherwise investigated in this task.
+
 ## 3. Vocab (from-scratch token-based models)
 
 `dtc.data.text.build_vocab`: top-N whitespace tokens by frequency, built

@@ -6,7 +6,10 @@
 # config_id, seed, train_fraction, train_dataset, eval_dataset) tuple.
 # An experiment may declare `eval_datasets: [a, b]` (Phase 2 E4/E5): one
 # training, evaluated on both frozen tests, two ledger records sharing a
-# training_id. Absent, it defaults to [dataset] (single-eval).
+# training_id. Absent, it defaults to [dataset] (single-eval). An
+# experiment may also declare `phase: phase2` (Task A4) to tag every
+# ledger record it produces; absent, it defaults to "phase1" (Phase 1's
+# tuning/e1/e2/e3, unchanged).
 
 tuning:
   # Task 4: one run per (model, grid-config-entry), single seed 0, Protocol
@@ -88,3 +91,54 @@ e3:
   config_source: final
   seeds: [0, 1, 2]
   train_fractions: [0.01, 0.05, 0.10, 0.25, 0.50, 1.0]
+
+e4:
+  # Phase 2 Task A4: CrisisLex in-domain + cross-dataset generalization.
+  # Trains on CrisisLex (early stopping on CrisisLex val, Protocol B path),
+  # evaluated on BOTH CrisisLex's own frozen test (in-domain) and Kaggle's
+  # frozen test (cross-dataset transfer) -- one training, two ledger
+  # records sharing a training_id. Reuses E1's tuned (Kaggle) final configs
+  # rather than re-tuning on CrisisLex (no CrisisLex tuning per Task A4).
+  stage: E4
+  protocol: B
+  dataset: crisislex
+  eval_datasets: [crisislex, kaggle]
+  models:
+    - tfidf_mnb
+    - tfidf_logreg
+    - meanpool_embed
+    - lstm
+    - gru
+    - bilstm
+    - conv1d
+    - use_frozen
+    - distilbert_finetune
+  config_source: final
+  seeds: [0, 1, 2, 3, 4]
+  train_fraction: 1.0
+  phase: phase2
+
+e5:
+  # Phase 2 Task A4: Kaggle-trained dual eval. Trains on Kaggle exactly as
+  # E1 does, evaluated on both Kaggle's own frozen test (its kaggle-side
+  # eval record is a reproducibility check against E1 -- same protocol,
+  # same config, same seeds, should match E1 within noise) and CrisisLex's
+  # frozen test (cross-dataset transfer, the mirror image of E4).
+  stage: E5
+  protocol: B
+  dataset: kaggle
+  eval_datasets: [kaggle, crisislex]
+  models:
+    - tfidf_mnb
+    - tfidf_logreg
+    - meanpool_embed
+    - lstm
+    - gru
+    - bilstm
+    - conv1d
+    - use_frozen
+    - distilbert_finetune
+  config_source: final
+  seeds: [0, 1, 2, 3, 4]
+  train_fraction: 1.0
+  phase: phase2

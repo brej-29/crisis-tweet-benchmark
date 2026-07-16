@@ -16,6 +16,11 @@ model (no persistence/reload), emitting one ledger record per eval_dataset
 sharing a training_id. A training is pending if ANY of its per-eval keys
 is missing; execution fills only the missing eval records.
 
+An experiment may also declare `phase: phase2` (Task A4), tagging every
+ledger record it produces via `dtc.harness.run.log_evaluation_run`'s
+`phase` field; absent, it defaults to "phase1" (Phase 1's tuning/e1/e2/e3
+keep their existing tag, unchanged).
+
 Usage:
     uv run python scripts/run_matrix.py --dry-run
     uv run python scripts/run_matrix.py --only e1 --models lstm gru
@@ -120,6 +125,7 @@ def build_run_specs(
                                 "stage": exp["stage"],
                                 "protocol": exp["protocol"],
                                 "dataset": exp["dataset"],
+                                "phase": exp.get("phase", "phase1"),
                                 # one spec per TRAINING run: E4/E5 evaluate the
                                 # same in-memory model on several frozen tests
                                 "train_dataset": exp["dataset"],
@@ -272,7 +278,7 @@ def execute_run(
         seed=seed,
         config=config,
         protocol=protocol,
-        phase="phase1",
+        phase=spec["phase"],
         stage=spec["stage"],
         smoke=smoke,
         train_fraction=spec["train_fraction"],

@@ -211,7 +211,7 @@ def test_skip_key_distinguishes_eval_datasets():
 def test_real_experiments_yaml_parses_with_expected_shape():
     module = _load_run_matrix_module()
     experiments = module.load_experiments_config()
-    assert set(experiments.keys()) == {"tuning", "e1", "e2", "e3"}
+    assert set(experiments.keys()) == {"tuning", "e1", "e2", "e3", "e4", "e5"}
     assert experiments["e1"]["seeds"] == [0, 1, 2, 3, 4]
     assert experiments["e2"]["seeds"] == [42]
     assert experiments["e2"]["protocol"] == "A"
@@ -220,6 +220,19 @@ def test_real_experiments_yaml_parses_with_expected_shape():
     assert experiments["e3"]["train_fractions"] == [0.01, 0.05, 0.10, 0.25, 0.50, 1.0]
     assert experiments["tuning"]["config_source"] == "tuning"
     assert len(experiments["tuning"]["models"]) == 9
+    for exp_key in ("e4", "e5"):
+        assert experiments[exp_key]["seeds"] == [0, 1, 2, 3, 4]
+        assert experiments[exp_key]["protocol"] == "B"
+        assert experiments[exp_key]["config_source"] == "final"
+        assert len(experiments[exp_key]["models"]) == 9
+        assert experiments[exp_key]["phase"] == "phase2"
+    assert experiments["e4"]["dataset"] == "crisislex"
+    assert experiments["e4"]["eval_datasets"] == ["crisislex", "kaggle"]
+    assert experiments["e5"]["dataset"] == "kaggle"
+    assert experiments["e5"]["eval_datasets"] == ["kaggle", "crisislex"]
+    # Phase 1 experiments have no `phase` key -- build_run_specs defaults it.
+    for exp_key in ("tuning", "e1", "e2", "e3"):
+        assert "phase" not in experiments[exp_key]
 
 
 def test_build_run_specs_expands_tuning_grid_into_one_spec_per_entry():
@@ -238,7 +251,42 @@ def test_dry_run_enumerates_full_matrix_including_tuning():
     experiments = module.load_experiments_config()
     specs = module.build_run_specs(experiments)
     stages = {s["stage"] for s in specs}
-    assert stages == {"tuning", "E1", "E2", "E3"}
+    assert stages == {"tuning", "E1", "E2", "E3", "E4", "E5"}
+
+
+def test_build_run_specs_defaults_phase_to_phase1():
+    module = _load_run_matrix_module()
+    specs = module.build_run_specs(SYNTHETIC_EXPERIMENTS)
+    assert all(s["phase"] == "phase1" for s in specs)
+
+
+def test_build_run_specs_respects_explicit_phase_key():
+    module = _load_run_matrix_module()
+    experiments = {
+        "e4": {
+            "stage": "E4",
+            "protocol": "B",
+            "dataset": "crisislex",
+            "eval_datasets": ["crisislex", "kaggle"],
+            "models": ["tfidf_mnb"],
+            "config_source": "final",
+            "seeds": [0],
+            "train_fraction": 1.0,
+            "phase": "phase2",
+        }
+    }
+    specs = module.build_run_specs(experiments)
+    assert all(s["phase"] == "phase2" for s in specs)
+
+
+def test_real_experiments_yaml_e4_e5_specs_are_tagged_phase2():
+    module = _load_run_matrix_module()
+    experiments = module.load_experiments_config()
+    specs = module.build_run_specs(experiments, only=["e4", "e5"])
+    assert specs  # non-empty
+    assert all(s["phase"] == "phase2" for s in specs)
+    specs_phase1 = module.build_run_specs(experiments, only=["e1"])
+    assert all(s["phase"] == "phase1" for s in specs_phase1)
 
 
 def _build_tiny_dataset_fixture(
@@ -332,6 +380,41 @@ def test_end_to_end_dry_run_and_resume_skip_against_tiny_fixture(tmp_path):
     assert ledger_records_after[0]["train_dataset"] == "kaggle"
     assert ledger_records_after[0]["eval_dataset"] == "kaggle"
     assert ledger_records_after[0]["training_id"]
+
+
+def test_end_to_end_run_ledgers_explicit_phase_key(tmp_path):
+    # Task A4: an experiment declaring `phase: phase2` must produce ledger
+    # records tagged phase2, not the hardcoded "phase1" execute_run used to
+    # always pass -- Phase 1 experiments (no `phase` key) are unaffected.
+    module = _load_run_matrix_module()
+    _build_tiny_kaggle_fixture(tmp_path)
+
+    configs_dir = tmp_path / "configs" / "final"
+    configs_dir.mkdir(parents=True)
+    (configs_dir / "tfidf_mnb.yaml").write_text(yaml.safe_dump({"alpha": 1.0}), encoding="utf-8")
+
+    experiments = {
+        "e1x": {
+            "stage": "E1",
+            "protocol": "B",
+            "dataset": "kaggle",
+            "models": ["tfidf_mnb"],
+            "config_source": "final",
+            "seeds": [0],
+            "train_fraction": 1.0,
+            "phase": "phase2",
+        }
+    }
+    experiments_path = tmp_path / "experiments.yaml"
+    experiments_path.write_text(yaml.safe_dump(experiments), encoding="utf-8")
+
+    module.main(experiments_config_path=experiments_path, repo_root=tmp_path, dry_run=False)
+
+    from dtc.harness.ledger import read_ledger
+
+    records = read_ledger(tmp_path / "results" / "ledger.jsonl")
+    assert len(records) == 1
+    assert records[0]["phase"] == "phase2"
 
 
 def _setup_dual_eval_experiment(tmp_path: Path, crisislex_with_event: bool = False) -> Path:
