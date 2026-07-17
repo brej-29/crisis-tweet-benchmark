@@ -74,3 +74,63 @@ retrain-fills-gap semantics; `extra_cache_dirs` outside config; multi-eval refus
 protocol-A/tuning; `phase` key; PROTOCOL.md numbers not pinned in configs; kaggle WordPiece
 measured-now provenance; T5/T6/T7 guard groupings; per-train_dataset use_frozen config
 resolution.
+
+## 8. Stage B — real execution (E4/E5, commit `856aace`)
+
+Preflight: clean tree at every launch boundary, `torch.cuda.is_available()` True (RTX 3050
+6GB Laptop GPU), confirmed on the commit that ran.
+
+- **E5 first** (`--only e5`, Kaggle-scale, 45 trainings / 90 eval records): completed in
+  one invocation, 45 run / 0 skipped.
+- **T7 inspected before E4** (per the gate): every model/seed's E5-kaggle-eval macro-F1
+  equals its E1 macro-F1 exactly (delta = 0.0000 across all 45 rows, all 9 models
+  including the CUDA-nondeterministic neural families). No anomaly — proceeded to E4.
+- **E4** (`--only e4`, CrisisLex-scale, ~7.4x the Kaggle train size, 45 trainings / 90
+  eval records): completed in one background invocation, 45 run / 0 skipped. The
+  distilbert_finetune tail dominated wall time as estimated in §6.
+- `make_tables.py` regenerated all seven tables from the now-complete ledger (506 lines).
+  T1–T4 are byte-identical to their pre-Stage-B content (verified via `git diff
+  results/tables/` before committing — no diff, confirming E4/E5 additions did not
+  perturb Phase-1-scoped tables). `results/tables/` is gitignored by design (`results/*`
+  with an explicit `!results/ledger.jsonl` exception) — only the ledger is committed;
+  tables regenerate deterministically from it.
+- Final dry-run against the completed real ledger: `tuning 0/52, e1 0/45, e2 0/9, e3
+  0/90, e4 0/45, e5 0/45` — **Total pending: 0/286**.
+
+### Run counts
+
+90 real trainings (45 E4 + 45 E5) x dual eval = 180 real eval records, plus the 36 smoke
+records from Stage A (unchanged). Ledger: 196 (Phase 1) + 36 (Stage A smoke) + 180
+(Stage B real) = 412 non-legacy new lines since Phase 1's close, 506 total lines.
+
+### Anomalies
+
+None. T7 deltas are exactly 0.0000 for all 45 (model, seed) pairs — stronger
+reproducibility than the "expect ~0, small nonzero for CUDA-nondeterministic models"
+default expectation, plausibly because this GPU/driver/torch combination's kernels for
+these specific ops and batch sizes happened to be deterministic in practice, or the
+nondeterministic kernels aren't on the hot path these models exercise; stated as an
+observation, not asserted as guaranteed for future re-runs.
+
+### T5/T6/T7 highlights (stated neutrally, no narrative spin)
+
+- **T5** (cross-dataset matrix): every model's `Train=X, Eval=X` (in-domain) score
+  exceeds its `Train=Y, Eval=X` (out-of-domain) score; OOD deltas are negative for every
+  model in both directions (range: eval=kaggle deltas −0.046 to −0.217; eval=crisislex
+  deltas −0.115 to −0.311). CrisisLex-trained/CrisisLex-evaluated in-domain macro-F1
+  (0.88–0.95) is uniformly higher than Kaggle-trained/Kaggle-evaluated in-domain
+  macro-F1 (0.69–0.81) across every model.
+- **T6** (per-event breakdown): per-event macro-F1 varies by CrisisLex event and by
+  which dataset trained the model; for kaggle-trained models the lowest per-event score
+  is consistently `2012_Sandy_Hurricane` (range 0.46–0.77 across models) and the highest
+  is consistently `2013_Queensland_Floods` or `2013_West_Texas_Explosion` (range
+  0.73–0.96); crisislex-trained models show a narrower per-event range (0.74–0.97).
+- **T7** (reproducibility): 45/45 (model, seed) deltas exactly 0.0000; see anomalies
+  note above.
+
+## 9. CHECKPOINT 1
+
+Stage A + Stage B complete, committed (`856aace`), pushed. Per the plan: **stop here**.
+Paste this report (§1–9) plus `results/tables/T5_cross_dataset.md`,
+`T6_per_event.md`, and `T7_reproducibility.md` to the architect chat for the Phase 2
+gate before Stage C proceeds.
